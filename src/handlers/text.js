@@ -99,10 +99,14 @@ async function handleTextMessage(text, userContext = {}) {
 
   const renameMatch = normalized.match(/^เปลี่ยนชื่อ\s*(.+)$/i);
   if (renameMatch) {
-    const user = await renameUserByLineId(userContext.lineUserId || 'unknown', renameMatch[1].trim());
-    return user
-      ? { type: 'rename_user', user, reply: `เปลี่ยนชื่อเรียบร้อยแล้ว: ${user.displayName}` }
-      : { type: 'error', reply: 'ไม่พบผู้ใช้ในระบบสำหรับเปลี่ยนชื่อ' };
+    try {
+      const user = await renameUserByLineId(userContext.lineUserId || 'unknown', renameMatch[1].trim());
+      return user
+        ? { type: 'rename_user', user, reply: `เปลี่ยนชื่อเรียบร้อยแล้ว: ${user.displayName}` }
+        : { type: 'error', reply: 'ไม่พบผู้ใช้ในระบบสำหรับเปลี่ยนชื่อ' };
+    } catch (error) {
+      return { type: 'error', reply: error.message };
+    }
   }
 
   if (/^(รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว)$/i.test(normalized)) {

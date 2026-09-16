@@ -56,6 +56,13 @@ async function registerUser({ lineUserId, displayName }) {
     throw error;
   }
 
+  const nameTaken = currentUsers.find(
+    (u) => (u.displayName || '').toLowerCase() === (displayName || '').toLowerCase()
+  );
+  if (nameTaken) {
+    throw Object.assign(new Error(`มีผู้ใช้ชื่อ "${displayName}" อยู่แล้ว กรุณาใช้ชื่ออื่น`), { code: 'DUPLICATE_NAME' });
+  }
+
   if (supabase) {
     const { data, error } = await supabase
       .from('users')
@@ -212,6 +219,15 @@ async function renameUserByLineId(lineUserId, newDisplayName) {
   const currentUser = await findUserByLineId(lineUserId);
   if (!currentUser) {
     return null;
+  }
+
+  const allUsers = await getUsers();
+  const nameTaken = allUsers.find(
+    (u) => String(u.id) !== String(currentUser.id) &&
+    (u.displayName || '').toLowerCase() === trimmedName.toLowerCase()
+  );
+  if (nameTaken) {
+    throw Object.assign(new Error(`มีผู้ใช้ชื่อ "${trimmedName}" อยู่แล้ว กรุณาใช้ชื่ออื่น`), { code: 'DUPLICATE_NAME' });
   }
 
   if (supabase) {
