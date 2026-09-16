@@ -1,0 +1,88 @@
+const express = require('express');
+const line = require('@line/bot-sdk');
+const dotenv = require('dotenv');
+const { handleTextMessage } = require('./handlers/text');
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const lineConfig = {
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
+  channelSecret: process.env.LINE_CHANNEL_SECRET || '',
+};
+
+const LineClient = line.LineBotClient || line.Client;
+const lineClient = lineConfig.channelAccessToken
+  ? new LineClient({ channelAccessToken: lineConfig.channelAccessToken })
+  : null;
+
+app.use(express.json());
+
+if (lineConfig.channelSecret && lineConfig.channelAccessToken) {
+  app.use('/webhook', line.middleware({
+    channelAccessToken: lineConfig.channelAccessToken,
+    channelSecret: lineConfig.channelSecret,
+  }));
+}
+
+app.get('/health', (req, res) => {
+  res.json({ ok: true, service: 'expense-bot' });
+});
+
+app.post('/webhook', async (req, res) => {
+  const events = Array.isArray(req.body?.events) ? req.body.events : [];
+
+  if (!events.length) {
+    return res.json({ ok: true, handled: 0 });
+  }
+
+  const replies = [];
+
+  for (const event of events) {
+    if (event.type === 'message' && event.message?.type === 'text') {
+      const messageText = event.message.text;
+      const userContext = {
+        lineUserId: event.source?.userId || 'unknown',
+      };
+
+      const result = await handleTextMessage(messageText, userContext);
+      replies.push({
+        type: 'text',
+        text: result.reply,
+      });
+
+      if (lineClient && event.replyToken) {
+        await lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: result.reply,
+        });
+      }
+    }
+
+    if (event.type === 'message' && event.message?.type === 'image') {
+      const replyText = 'รับรูป slip แล้ว แต่ยังไม่ทำ OCR แบบเต็มใน Sprint 1 ค่ะ';
+      replies.push({
+        type: 'text',
+        text: replyText,
+      });
+
+      if (lineClient && event.replyToken) {
+        await lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: replyText,
+        });
+      }
+    }
+  }
+
+  return res.json({ ok: true, handled: replies.length, replies });
+});
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Expense bot listening on port ${PORT}`);
+  });
+}
+
+module.exports = { app };

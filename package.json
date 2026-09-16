@@ -1,13 +1,31 @@
 {
   "name": "expense-bot",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "LINE expense tracking chatbot for a couple",
+  "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "test": "node --test",
+    "db:schema": "cat supabase/schema.sql",
+    "db:check": "node -e \"const { getDbStatus } = require('./src/services/db'); console.log(JSON.stringify(getDbStatus(), null, 2));\""
   },
-  "keywords": [],
+  "keywords": [
+    "line",
+    "expense",
+    "bot"
+  ],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "devDependencies": {
+    "localtunnel": "^2.0.2"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0",
+    "@line/bot-sdk": "^11.2.0",
+    "@supabase/supabase-js": "^2.116.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
 }
