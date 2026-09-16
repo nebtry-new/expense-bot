@@ -116,6 +116,7 @@ npm run db:check
 When using LINE chat:
 
 - `ลงทะเบียน ปิ๊ก`
+- `เปลี่ยนชื่อ ปิ๊ก`
 - `ค่าอาหาร 350`
 - `ค่าเดินทาง 800 หาร 2 คน`
 - `สรุป`
@@ -129,6 +130,7 @@ When using LINE chat:
 
 This bot is designed for exactly two active users only.
 
+- `เปลี่ยนชื่อ <new-name>`: rename the currently registered user without changing the underlying stable user id
 - `reset-all`: starts a full reset flow and asks for confirmation
 - `reset-confirm`: confirms and clears all active user/expense data
 - `terminate user <name>`: soft-disables a user

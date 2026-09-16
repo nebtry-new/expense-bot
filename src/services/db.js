@@ -201,10 +201,44 @@ async function restoreUserByName(displayName) {
   return { ...deletedUser, isDeleted: false };
 }
 
+async function renameUserByLineId(lineUserId, newDisplayName) {
+  const trimmedName = String(newDisplayName || '').trim();
+  if (!trimmedName) {
+    return null;
+  }
+
+  const currentUser = await findUserByLineId(lineUserId);
+  if (!currentUser) {
+    return null;
+  }
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('users')
+      .update({ display_name: trimmedName })
+      .eq('id', currentUser.id)
+      .select();
+
+    if (error) {
+      throw error;
+    }
+
+    return normalizeUser(data?.[0]) || null;
+  }
+
+  const userIndex = users.findIndex((entry) => entry.id === currentUser.id);
+  if (userIndex < 0) {
+    return null;
+  }
+
+  users[userIndex].displayName = trimmedName;
+  return { ...users[userIndex] };
+}
+
 async function addExpense(expense) {
   if (supabase) {
     const payload = {
-      paid_by: expense.paidBy,
+      paid_by: expense.paidByUserId,
       amount: expense.amount,
       description: expense.description,
       category: expense.category || 'other',
@@ -227,6 +261,8 @@ async function addExpense(expense) {
     id: `exp_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
     ...expense,
+    paidByUserId: expense.paidByUserId,
+    paidByDisplayName: expense.paidByDisplayName,
   };
 
   expenses.push(nextExpense);
@@ -242,7 +278,7 @@ async function getExpenses() {
 
     return data.map((expense) => ({
       id: expense.id,
-      paidBy: expense.paid_by,
+      paidByUserId: expense.paid_by,
       amount: Number(expense.amount),
       description: expense.description,
       category: expense.category,
@@ -254,6 +290,21 @@ async function getExpenses() {
   }
 
   return [...expenses];
+}
+
+async function clearSettlement() {
+  if (supabase) {
+    const { error } = await supabase
+      .from('expenses')
+      .update({ is_cleared: true })
+      .eq('is_cleared', false);
+    if (error) throw error;
+    return;
+  }
+
+  for (const expense of expenses) {
+    expense.isCleared = true;
+  }
 }
 
 function getDbStatus() {
@@ -273,8 +324,10 @@ module.exports = {
   getUsers,
   addExpense,
   getExpenses,
+  clearSettlement,
   getDbStatus,
   terminateUserByName,
   restoreUserByName,
+  renameUserByLineId,
   resetState,
 };

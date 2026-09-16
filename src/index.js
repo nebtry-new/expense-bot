@@ -33,6 +33,21 @@ async function sendReplyMessage(event, text) {
   }
 }
 
+async function sendPushMessage(toUserId, text) {
+  if (!lineClient || !toUserId) {
+    return;
+  }
+
+  try {
+    await lineClient.pushMessage({
+      to: toUserId,
+      messages: [{ type: 'text', text }],
+    });
+  } catch (error) {
+    console.error('LINE pushMessage failed:', error?.response?.data || error.message || error);
+  }
+}
+
 if (lineConfig.channelSecret && lineConfig.channelAccessToken) {
   app.use('/webhook', line.middleware({
     channelAccessToken: lineConfig.channelAccessToken,
@@ -91,6 +106,16 @@ app.post('/webhook', async (req, res) => {
       });
 
       await sendReplyMessage(event, result.reply);
+
+      if (result.type === 'settlement_trigger' && result.notification?.debtorLineUserId) {
+        const settlementText = `สรุปยอด: ${result.notification.debtorName} ต้องจ่าย ${result.notification.amount.toFixed(2)} บาท ให้ ${result.notification.creditorName}`;
+        await sendPushMessage(result.notification.debtorLineUserId, settlementText);
+      }
+
+      if (result.type === 'payment_sent' && result.notification?.creditorLineUserId) {
+        const pushText = `${result.notification.debtorName} แจ้งว่าโอนเงิน ${result.notification.amount.toFixed(2)} บาท แล้ว — พิมพ์ รับแล้ว เพื่อยืนยันและเคลียร์ยอด`;
+        await sendPushMessage(result.notification.creditorLineUserId, pushText);
+      }
     }
 
     if (event.type === 'message' && event.message?.type === 'image') {

@@ -1,23 +1,34 @@
 function calculateBalances(expenses = [], users = ['userA', 'userB']) {
-  const validUsers = (Array.isArray(users) ? users.filter(Boolean) : ['userA', 'userB']).length
-    ? Array.from(new Set(Array.isArray(users) ? users.filter(Boolean) : ['userA', 'userB']))
-    : ['userA', 'userB'];
+  const normalUsers = Array.isArray(users) && users.length
+    ? users.map((user) => {
+        if (typeof user === 'string') return { id: user, displayName: user };
+        return {
+          id: String(user.id || 'unknown-user'),
+          displayName: user.displayName || user.id || 'ผู้ใช้',
+        };
+      })
+    : [{ id: 'userA', displayName: 'userA' }, { id: 'userB', displayName: 'userB' }];
 
-  const net = Object.fromEntries(validUsers.map((name) => [name, 0]));
+  const validUsers = Array.from(new Map(normalUsers.map((user) => [String(user.id), user])).values());
+  const userByKey = new Map(validUsers.map((user) => [String(user.id), user]));
+
+  const net = Object.fromEntries(validUsers.map((user) => [String(user.id), 0]));
 
   for (const expense of expenses) {
-    if (!expense || !expense.paidBy || !expense.amount || expense.splitMode === 'none') {
+    if (!expense || !expense.amount || expense.splitMode === 'none') {
       continue;
     }
 
-    const payer = validUsers.includes(expense.paidBy) ? expense.paidBy : validUsers[0];
-    const others = validUsers.filter((name) => name !== payer);
+    const payerKey = String(expense.paidByUserId ?? validUsers[0].id);
+    const payerUser = userByKey.get(payerKey) ?? validUsers[0];
+    const payerId = String(payerUser.id);
+    const others = validUsers.filter((user) => String(user.id) !== payerId);
 
     if (expense.splitMode === 'half' || expense.splitMode === undefined) {
       const share = Number(expense.amount) / validUsers.length;
-      net[payer] += share * (validUsers.length - 1);
+      net[payerId] += share * (validUsers.length - 1);
       for (const other of others) {
-        net[other] -= share;
+        net[String(other.id)] -= share;
       }
       continue;
     }
@@ -25,26 +36,30 @@ function calculateBalances(expenses = [], users = ['userA', 'userB']) {
     if (expense.splitMode === 'per_head') {
       const people = Number(expense.numPeople || validUsers.length);
       const share = Number(expense.amount) / people;
-      net[payer] += share * Math.max(people - 1, 0);
+      net[payerId] += share * Math.max(people - 1, 0);
       for (const other of others) {
-        net[other] -= share;
+        net[String(other.id)] -= share;
       }
       continue;
     }
 
     if (expense.splitMode === 'custom' && expense.customAmounts) {
       for (const user of validUsers) {
-        const customShare = Number(expense.customAmounts[user] ?? 0);
-        if (user === payer) {
-          net[user] += customShare || Number(expense.amount) / validUsers.length;
+        const customShare = Number(
+          expense.customAmounts[user.id] ??
+          expense.customAmounts[user.displayName] ??
+          0
+        );
+        if (String(user.id) === payerId) {
+          net[String(user.id)] += customShare || Number(expense.amount) / validUsers.length;
         } else {
-          net[user] -= customShare || 0;
+          net[String(user.id)] -= customShare || 0;
         }
       }
     }
   }
 
-  return Object.fromEntries(validUsers.map((name) => [name, Number(net[name] || 0)]));
+  return Object.fromEntries(validUsers.map((user) => [String(user.id), Number(net[String(user.id)] || 0)]));
 }
 
 module.exports = {

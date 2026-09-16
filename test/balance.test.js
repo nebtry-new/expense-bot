@@ -4,8 +4,8 @@ const { calculateBalances } = require('../src/utils/balance');
 
 test('calculates a simple half-split summary', () => {
   const summary = calculateBalances([
-    { paidBy: 'userA', amount: 500, splitMode: 'half' },
-    { paidBy: 'userB', amount: 300, splitMode: 'half' },
+    { paidByUserId: 'userA', amount: 500, splitMode: 'half' },
+    { paidByUserId: 'userB', amount: 300, splitMode: 'half' },
   ], ['userA', 'userB']);
 
   assert.equal(summary.userA, 100);
@@ -14,8 +14,8 @@ test('calculates a simple half-split summary', () => {
 
 test('keeps personal expenses out of shared balance', () => {
   const summary = calculateBalances([
-    { paidBy: 'userA', amount: 800, splitMode: 'none' },
-    { paidBy: 'userB', amount: 200, splitMode: 'half' },
+    { paidByUserId: 'userA', amount: 800, splitMode: 'none' },
+    { paidByUserId: 'userB', amount: 200, splitMode: 'half' },
   ], ['userA', 'userB']);
 
   assert.equal(summary.userA, -100);

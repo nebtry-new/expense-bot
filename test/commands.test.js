@@ -27,6 +27,18 @@ test('builds a shared summary command without personal expenses', async () => {
   assert.equal(summary.reply.includes('A'), true);
 });
 
+test('renames the current user without changing their stable user id', async () => {
+  await resetData();
+  const user = await registerUser({ lineUserId: 'u1', displayName: 'A' });
+
+  const renamed = await handleTextMessage('เปลี่ยนชื่อ แอล', { lineUserId: 'u1' });
+
+  assert.equal(renamed.type, 'rename_user');
+  assert.equal(renamed.user.displayName, 'แอล');
+  assert.equal(renamed.user.id, user.id);
+  assert.equal((await getUsers())[0].displayName, 'แอล');
+});
+
 test('states clearly who owes whom in the settlement message', async () => {
   await resetData();
   await registerUser({ lineUserId: 'u1', displayName: 'A' });
@@ -36,6 +48,39 @@ test('states clearly who owes whom in the settlement message', async () => {
   const summary = await handleTextMessage('สรุป');
 
   assert.equal(summary.reply.includes('B ต้องจ่ายให้ A'), true);
+});
+
+test('asks to collect payment and includes debtor notification data after summary', async () => {
+  await resetData();
+  await registerUser({ lineUserId: 'u1', displayName: 'A' });
+  await registerUser({ lineUserId: 'u2', displayName: 'B' });
+
+  await handleTextMessage('ค่าอาหาร 500', { lineUserId: 'u1' });
+  const summary = await handleTextMessage('สรุป');
+
+  assert.match(summary.reply, /เรียกเก็บเงินเลยไหม|อยากเรียกเก็บเงินเลยไหม/i);
+  assert.equal(summary.notification?.debtorName, 'B');
+  assert.equal(summary.notification?.creditorName, 'A');
+  assert.equal(summary.notification?.amount, 250);
+});
+
+test('keeps balance calculations stable even if display names change later', async () => {
+  await resetData();
+  const userA = await registerUser({ lineUserId: 'u1', displayName: 'A' });
+  const userB = await registerUser({ lineUserId: 'u2', displayName: 'B' });
+
+  await handleTextMessage('ค่าอาหาร 500', { lineUserId: 'u1' });
+
+  const renamedUsers = [
+    { ...userA, displayName: 'Alpha' },
+    { ...userB, displayName: 'Beta' },
+  ];
+
+  const balanceMap = require('../src/utils/balance').calculateBalances(await require('../src/services/db').getExpenses(), renamedUsers);
+
+  assert.equal(balanceMap[userA.id], 250);
+  assert.equal(balanceMap[userB.id], -250);
+  assert.equal(Object.keys(balanceMap).length, 2);
 });
 
 test('rejects a third registered user', async () => {
