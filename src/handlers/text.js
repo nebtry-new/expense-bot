@@ -5,7 +5,6 @@ const {
   registerUser,
   getUsers,
   getExpenses,
-  findUserByLineId,
   resetData,
   clearSettlement,
   terminateUserByName,
@@ -71,11 +70,12 @@ async function handleTextMessage(text, userContext = {}) {
         '',
         '── คำสั่งอื่น ──',
         '1) สรุปยอด: สรุป',
-        '2) จ่ายแล้ว: แจ้งให้ที่รักยืนยันการรับเงิน',
-        '3) รับแล้ว: ยืนยันรับเงินและเคลียร์ยอด',
-        '4) ลงทะเบียน: ลงทะเบียน (ชื่อ)',
-        '5) เปลี่ยนชื่อ: เปลี่ยนชื่อ (ชื่อใหม่)',
-        '6) reset: reset-all → reset-confirm',
+        '2) สรุปค่าใช้จ่ายเดือนนี้: สรุปยอดเดือนนี้',
+        '3) จ่ายแล้ว: แจ้งให้ที่รักยืนยันการรับเงิน',
+        '4) รับแล้ว: ยืนยันรับเงินและเคลียร์ยอด',
+        '5) ลงทะเบียน: ลงทะเบียน (ชื่อ)',
+        '6) เปลี่ยนชื่อ: เปลี่ยนชื่อ (ชื่อใหม่)',
+        '7) reset: reset-all → reset-confirm',
         '',
         'หมายเหตุ: รองรับผู้ใช้ได้สูงสุด 2 คนเท่านั้น',
       ].join('\n'),
@@ -345,7 +345,61 @@ async function handleTextMessage(text, userContext = {}) {
     };
   }
 
-  const parsed = parseExpenseText(normalized);
+  if (/^(สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้)$/i.test(normalized)) {
+    const users = await getUsers();
+    const allExpenses = await getExpenses();
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    const thaiMonths = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+    const monthName = thaiMonths[month];
+
+    const thisMonthExpenses = allExpenses.filter((expense) => {
+      if (!expense.createdAt) return false;
+      const d = new Date(expense.createdAt);
+      return d.getFullYear() === year && d.getMonth() === month;
+    });
+
+    if (!thisMonthExpenses.length) {
+      return {
+        type: 'summary_monthly',
+        reply: `ยังไม่มีค่าใช้จ่ายในเดือน${monthName} ${year}`,
+      };
+    }
+
+    const total = thisMonthExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const monthlySummary = calculateBalances(thisMonthExpenses, users);
+
+    const lines = [
+      `สรุปค่าใช้จ่ายเดือน${monthName} ${year}`,
+      `รวมทั้งหมด: ${total.toLocaleString()} บาท (${thisMonthExpenses.length} รายการ)`,
+    ];
+    const oweLines = users.map((user) => {
+      const balance = Number(monthlySummary[String(user.id)] ?? 0);
+      const owes = Math.max(0, -balance);
+      return { displayName: user.displayName, owes };
+    });
+
+    if (oweLines.some((u) => u.owes > 0)) {
+      for (const u of oweLines) {
+        lines.push(`${u.displayName} ค้างจ่าย: ${u.owes.toLocaleString()} บาท`);
+      }
+    }
+
+    return { type: 'summary_monthly', reply: lines.join('\n') };
+  }
+
+  const lineUserId = userContext.lineUserId || 'unknown';
+  const allUsers = await getUsers();
+  const sender = allUsers.find((u) => u.lineUserId === lineUserId) || null;
+  const partner = allUsers.find((u) => u.lineUserId !== lineUserId) || null;
+
+  const parsed = parseExpenseText(normalized, {
+    senderName: sender?.displayName || null,
+    partnerName: partner?.displayName || null,
+  });
 
   if (!parsed.amount) {
     return {
@@ -355,8 +409,13 @@ async function handleTextMessage(text, userContext = {}) {
     };
   }
 
-  const lineUserId = userContext.lineUserId || 'unknown';
-  const sender = await findUserByLineId(lineUserId);
+  let customAmounts = null;
+  if (parsed.customAmounts && sender && partner) {
+    customAmounts = {
+      [String(sender.id)]: parsed.customAmounts.me,
+      [String(partner.id)]: parsed.customAmounts.partner,
+    };
+  }
 
   const saved = await addExpense({
     paidByUserId: sender ? sender.id : lineUserId,
@@ -365,7 +424,7 @@ async function handleTextMessage(text, userContext = {}) {
     amount: parsed.amount,
     splitMode: parsed.splitMode,
     numPeople: parsed.numPeople,
-    customAmounts: parsed.customAmounts,
+    customAmounts,
   });
 
   return {

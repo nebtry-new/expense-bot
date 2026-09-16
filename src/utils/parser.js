@@ -2,9 +2,24 @@ function normalizeNumber(value) {
   return Number.parseFloat(String(value).replace(/,/g, '').trim());
 }
 
-function parseCustomSplit(text) {
-  const meMatch = text.match(/(?:ฉัน|me|i)\s*(\d+(?:\.\d+)?)/i);
-  const partnerMatch = text.match(/(?:แฟน|partner|เธอ|เขา)\s*(\d+(?:\.\d+)?)/i);
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseCustomSplit(text, userNames = {}) {
+  const { senderName, partnerName } = userNames;
+
+  const meParts = ['ฉัน', 'me', 'i'];
+  if (senderName) meParts.push(escapeRegex(senderName));
+
+  const partnerParts = ['แฟน', 'partner', 'เธอ', 'เขา'];
+  if (partnerName) partnerParts.push(escapeRegex(partnerName));
+
+  const mePattern = new RegExp(`(?:${meParts.join('|')})\\s*(\\d+(?:\\.\\d+)?)`, 'i');
+  const partnerPattern = new RegExp(`(?:${partnerParts.join('|')})\\s*(\\d+(?:\\.\\d+)?)`, 'i');
+
+  const meMatch = text.match(mePattern);
+  const partnerMatch = text.match(partnerPattern);
 
   if (meMatch && partnerMatch) {
     return {
@@ -16,7 +31,7 @@ function parseCustomSplit(text) {
   return null;
 }
 
-function parseExpenseText(rawText = '') {
+function parseExpenseText(rawText = '', userNames = {}) {
   const text = String(rawText || '').trim();
 
   if (!text) {
@@ -43,10 +58,16 @@ function parseExpenseText(rawText = '') {
   let numPeople = null;
   let customAmounts = null;
 
+  const { senderName, partnerName } = userNames;
+  const customKeywords = ['ฉัน', 'แฟน', 'me', 'partner', 'เธอ', 'เขา'];
+  if (senderName) customKeywords.push(escapeRegex(senderName));
+  if (partnerName) customKeywords.push(escapeRegex(partnerName));
+  const customTriggerPattern = new RegExp(`(${customKeywords.join('|')})`, 'i');
+
   if (/(ส่วนตัว|ของขวัญ|ไม่หาร|private|personal)/i.test(cleaned)) {
     splitMode = 'none';
-  } else if (/(ฉัน|แฟน|me|partner|เธอ|เขา)/i.test(cleaned) && /\d/.test(cleaned)) {
-    customAmounts = parseCustomSplit(cleaned);
+  } else if (customTriggerPattern.test(cleaned) && /\d/.test(cleaned)) {
+    customAmounts = parseCustomSplit(cleaned, userNames);
     if (customAmounts) {
       splitMode = 'custom';
     }

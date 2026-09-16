@@ -15,7 +15,7 @@ function calculateBalances(expenses = [], users = ['userA', 'userB']) {
   const net = Object.fromEntries(validUsers.map((user) => [String(user.id), 0]));
 
   for (const expense of expenses) {
-    if (!expense || !expense.amount || expense.splitMode === 'none') {
+    if (!expense || !expense.amount || expense.splitMode === 'none' || expense.isCleared) {
       continue;
     }
 
