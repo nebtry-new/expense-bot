@@ -51,7 +51,11 @@ function parseExpenseText(rawText = '', userNames = {}) {
     };
   }
 
+  const tripTagMatch = text.match(/#([฀-๿a-zA-Z0-9_]+)/);
+  const tripTag = tripTagMatch ? tripTagMatch[1] : null;
+
   const cleaned = text
+    .replace(/#[฀-๿a-zA-Z0-9_]+/g, '')
     .replace(/[$฿]/g, '')
     .replace(/,/g, '')
     .replace(/\s+/g, ' ')
@@ -64,6 +68,7 @@ function parseExpenseText(rawText = '', userNames = {}) {
   let splitMode = 'half';
   let numPeople = null;
   let customAmounts = null;
+  let splitExplicit = false;
 
   const { senderName, partnerName } = userNames;
   const customKeywords = ['ฉัน', 'แฟน', 'me', 'partner', 'เธอ', 'เขา'];
@@ -73,10 +78,12 @@ function parseExpenseText(rawText = '', userNames = {}) {
 
   if (/(ส่วนตัว|ของขวัญ|ไม่หาร|private|personal)/i.test(cleaned)) {
     splitMode = 'none';
+    splitExplicit = true;
   } else if (customTriggerPattern.test(cleaned) && /\d/.test(cleaned)) {
     customAmounts = parseCustomSplit(cleaned, userNames, amount);
     if (customAmounts) {
       splitMode = 'custom';
+      splitExplicit = true;
     }
   }
 
@@ -87,6 +94,7 @@ function parseExpenseText(rawText = '', userNames = {}) {
       numPeople = Number.parseInt(perHeadMatch[1], 10);
       splitMode = numPeople === 2 ? 'half' : 'per_head';
       if (splitMode === 'half') numPeople = null;
+      splitExplicit = true;
     }
   }
 
@@ -111,10 +119,44 @@ function parseExpenseText(rawText = '', userNames = {}) {
     numPeople,
     customAmounts,
     splitWarning,
+    splitExplicit,
+    tripTag,
   };
+}
+
+function parseTripCreation(text) {
+  const trimmed = text.trim();
+
+  const perHeadMatch = trimmed.match(/^(.+?)\s+(?:หาร|split)\s*(\d+)(?:\s*คน)?$/i)
+    ?? trimmed.match(/^(.+?)\s*\/\s*(\d+)$/);
+  if (perHeadMatch) {
+    const n = Number.parseInt(perHeadMatch[2], 10);
+    return {
+      name: perHeadMatch[1].trim(),
+      defaultSplitMode: n === 2 ? 'half' : 'per_head',
+      defaultNumPeople: n === 2 ? null : n,
+    };
+  }
+
+  const noneMatch = trimmed.match(/^(.+?)\s+(ไม่หาร|ส่วนตัว|ของขวัญ|private|personal)$/i);
+  if (noneMatch) {
+    return { name: noneMatch[1].trim(), defaultSplitMode: 'none', defaultNumPeople: null };
+  }
+
+  return { name: trimmed, defaultSplitMode: 'half', defaultNumPeople: null };
+}
+
+function formatSplitMode(splitMode, numPeople) {
+  if (splitMode === 'half') return 'หารครึ่ง';
+  if (splitMode === 'none') return 'ส่วนตัว';
+  if (splitMode === 'custom') return 'กำหนดเอง';
+  if (splitMode === 'per_head') return `หาร ${numPeople || '?'} คน`;
+  return splitMode || 'หารครึ่ง';
 }
 
 module.exports = {
   parseExpenseText,
   parseCustomSplit,
+  parseTripCreation,
+  formatSplitMode,
 };

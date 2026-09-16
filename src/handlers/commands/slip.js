@@ -1,5 +1,5 @@
 const { addExpense, getUsers } = require('../../services/db');
-const { parseCustomSplit } = require('../../utils/parser');
+const { parseCustomSplit, formatSplitMode } = require('../../utils/parser');
 const { slipConfirmState } = require('../state');
 
 async function handleSlipConfirm(userContext) {
@@ -23,7 +23,7 @@ async function handleSlipConfirm(userContext) {
   return {
     type: 'expense',
     saved,
-    reply: `บันทึกแล้ว: ${pending.description} ${Number(pending.amount).toLocaleString()} บาท (หารครึ่ง)`,
+    reply: `บันทึกแล้ว: ${pending.description} ${Number(pending.amount).toLocaleString()} บาท (${formatSplitMode('half')})`,
   };
 }
 
@@ -101,7 +101,7 @@ async function handleSlipOverride(text, userContext) {
   return {
     type: 'expense',
     saved,
-    reply: `บันทึกแล้ว: ${pending.description} ${Number(pending.amount).toLocaleString()} บาท (${splitMode})`,
+    reply: `บันทึกแล้ว: ${pending.description} ${Number(pending.amount).toLocaleString()} บาท (${formatSplitMode(splitMode, numPeople)})`,
   };
 }
 

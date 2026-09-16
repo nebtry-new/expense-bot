@@ -1,5 +1,5 @@
-const { parseExpenseText } = require('../../utils/parser');
-const { addExpense, getUsers, findLastExpense } = require('../../services/db');
+const { parseExpenseText, formatSplitMode } = require('../../utils/parser');
+const { addExpense, getUsers, findLastExpense, findTripByName } = require('../../services/db');
 const { deleteConfirmState } = require('../state');
 
 async function handleExpenseLines(inputLines, userContext) {
@@ -13,8 +13,8 @@ async function handleExpenseLines(inputLines, userContext) {
     partnerName: partner?.displayName || null,
   };
 
-  // Validate only — no DB writes. Returns { parsed, customAmounts } | { type: 'error' } | null
-  const validateLine = (line) => {
+  // Validate only — no DB writes. Returns { parsed, customAmounts, tripId } | { type: 'error' } | null
+  const validateLine = async (line) => {
     const p = parseExpenseText(line, userNames);
     if (!p.amount) return null;
 
@@ -48,11 +48,26 @@ async function handleExpenseLines(inputLines, userContext) {
       }
     }
 
-    return { parsed: p, customAmounts, line };
+    let tripId = null;
+    if (p.tripTag) {
+      const trip = await findTripByName(p.tripTag);
+      if (!trip) {
+        return { type: 'error', reply: `"${line}" — ไม่พบทริป "#${p.tripTag}" สร้างก่อนด้วย: สร้างทริป ${p.tripTag}` };
+      }
+      tripId = trip.id;
+
+      // Apply trip's default split mode when user didn't explicitly specify one
+      if (!p.splitExplicit && trip.default_split_mode && trip.default_split_mode !== 'half') {
+        p.splitMode = trip.default_split_mode;
+        p.numPeople = trip.default_num_people || null;
+      }
+    }
+
+    return { parsed: p, customAmounts, tripId, line };
   };
 
   // Write to DB — only called after all validations pass
-  const writeLine = async ({ parsed, customAmounts }) => {
+  const writeLine = async ({ parsed, customAmounts, tripId }) => {
     const saved = await addExpense({
       paidByUserId: sender ? sender.id : lineUserId,
       paidByDisplayName: sender ? sender.displayName : lineUserId,
@@ -61,12 +76,13 @@ async function handleExpenseLines(inputLines, userContext) {
       splitMode: parsed.splitMode,
       numPeople: parsed.numPeople,
       customAmounts,
+      tripId,
     });
     return { parsed, saved };
   };
 
   if (inputLines.length > 1) {
-    const validated = inputLines.map(validateLine);
+    const validated = await Promise.all(inputLines.map(validateLine));
     const errors = validated.filter((r) => r?.type === 'error');
     if (errors.length) {
       return { type: 'error', reply: errors.map((e) => e.reply).join('\n') };
@@ -79,7 +95,7 @@ async function handleExpenseLines(inputLines, userContext) {
 
     const results = await Promise.all(toWrite.map(writeLine));
     const total = results.reduce((sum, r) => sum + r.parsed.amount, 0);
-    const itemLines = results.map((r) => `• ${r.parsed.description} ${r.parsed.amount.toLocaleString()} บาท (${r.parsed.splitMode})`);
+    const itemLines = results.map((r) => `• ${r.parsed.description} ${r.parsed.amount.toLocaleString()} บาท (${formatSplitMode(r.parsed.splitMode, r.parsed.numPeople)})`);
 
     return {
       type: 'expense_batch',
@@ -88,7 +104,7 @@ async function handleExpenseLines(inputLines, userContext) {
     };
   }
 
-  const validated = validateLine(inputLines[0]);
+  const validated = await validateLine(inputLines[0]);
   if (!validated) {
     return { type: 'noop', reply: 'ไม่พบจำนวนเงินที่บันทึกได้' };
   }
@@ -101,7 +117,7 @@ async function handleExpenseLines(inputLines, userContext) {
     type: 'expense',
     parsed: result.parsed,
     saved: result.saved,
-    reply: `บันทึกค่าใช้จ่ายแล้ว: ${result.parsed.description} ${result.parsed.amount.toLocaleString()} บาท (${result.parsed.splitMode})`,
+    reply: `บันทึกค่าใช้จ่ายแล้ว: ${result.parsed.description} ${result.parsed.amount.toLocaleString()} บาท (${formatSplitMode(result.parsed.splitMode, result.parsed.numPeople)})`,
   };
 }
 

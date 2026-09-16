@@ -3,6 +3,7 @@ const { handleSummary, handleMonthlySummary } = require('./commands/summary');
 const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('./commands/settlement');
 const { handleExpenseLines, handleDeleteLastExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
+const { handleCreateTrip, handleListTrips, handleTripSummary } = require('./commands/trip');
 const { clearAllState, slipConfirmState } = require('./state');
 
 const HELP_TEXT = [
@@ -24,6 +25,13 @@ const HELP_TEXT = [
   '7) เปลี่ยนชื่อ: เปลี่ยนชื่อ (ชื่อใหม่)',
   '8) ยกเลิกรายการล่าสุด: ยกเลิกรายการล่าสุด',
   '9) reset: reset-all → reset-confirm',
+  '',
+  '── ทริป ──',
+  'สร้างทริป (หารครึ่ง): สร้างทริป (ชื่อ)',
+  'สร้างทริป (หารตามจำนวนคน): สร้างทริป (ชื่อ) หาร 3',
+  'บันทึกค่าใช้จ่ายใต้ทริป: ค่าโรงแรม 1200 #ชื่อทริป',
+  'ดูรายการทริปทั้งหมด: ทริป',
+  'สรุปค่าใช้จ่ายในทริป: สรุปทริป (ชื่อ)',
   '',
   'หมายเหตุ: รองรับผู้ใช้ได้สูงสุด 2 คนเท่านั้น',
 ].join('\n');
@@ -119,6 +127,20 @@ async function handleTextMessage(text, userContext = {}) {
 
   if (/^(สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้)$/i.test(normalized)) {
     return handleMonthlySummary();
+  }
+
+  const createTripMatch = normalized.match(/^สร้างทริป\s*(.+)$/i);
+  if (createTripMatch) {
+    return handleCreateTrip(createTripMatch[1].trim());
+  }
+
+  if (/^(ทริป|trips|รายการทริป)$/i.test(normalized)) {
+    return handleListTrips();
+  }
+
+  const tripSummaryMatch = normalized.match(/^สรุปทริป\s*(.+)$/i);
+  if (tripSummaryMatch) {
+    return handleTripSummary(tripSummaryMatch[1].trim());
   }
 
   if (slipConfirmState.pendingByUser[userContext.lineUserId || 'unknown']) {

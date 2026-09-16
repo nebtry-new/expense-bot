@@ -6,6 +6,7 @@ dotenv.config();
 const users = [];
 const deletedUsers = [];
 const expenses = [];
+const trips = [];
 const resetState = {
   pendingReset: false,
 };
@@ -37,6 +38,7 @@ async function resetData() {
   users.length = 0;
   deletedUsers.length = 0;
   expenses.length = 0;
+  trips.length = 0;
   resetState.pendingReset = false;
 }
 
@@ -246,6 +248,7 @@ async function addExpense(expense) {
       num_people: expense.numPeople || null,
       is_cleared: false,
       slip_url: expense.slipUrl || null,
+      trip_id: expense.tripId || null,
       created_at: new Date().toISOString(),
     };
 
@@ -305,6 +308,7 @@ async function getExpenses() {
         numPeople: expense.num_people,
         isCleared: !!expense.is_cleared,
         customAmounts,
+        tripId: expense.trip_id || null,
         createdAt: expense.created_at,
       };
     });
@@ -387,6 +391,72 @@ async function deleteLastExpense(paidByUserId) {
   return { id: removed.id, description: removed.description, amount: Number(removed.amount) };
 }
 
+async function createTrip(name, defaultSplitMode = 'half', defaultNumPeople = null) {
+  const payload = { name, default_split_mode: defaultSplitMode, default_num_people: defaultNumPeople || null };
+  if (supabase) {
+    const { data, error } = await supabase.from('trips').insert(payload).select();
+    if (error) throw error;
+    return data?.[0] || null;
+  }
+  const trip = {
+    id: `trip_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+    name,
+    default_split_mode: defaultSplitMode,
+    default_num_people: defaultNumPeople || null,
+    createdAt: new Date().toISOString(),
+  };
+  trips.push(trip);
+  return trip;
+}
+
+async function getTrips() {
+  if (supabase) {
+    const { data, error } = await supabase.from('trips').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
+  return [...trips];
+}
+
+async function findTripByName(name) {
+  const allTrips = await getTrips();
+  const lower = name.toLowerCase();
+  return allTrips.find((t) => (t.name || '').toLowerCase() === lower) || null;
+}
+
+async function getExpensesByTrip(tripId) {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*, expense_splits(user_id, amount)')
+      .eq('trip_id', tripId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data || []).map((expense) => {
+      let customAmounts = null;
+      if (expense.split_mode === 'custom' && expense.expense_splits?.length) {
+        customAmounts = {};
+        for (const split of expense.expense_splits) {
+          customAmounts[String(split.user_id)] = Number(split.amount);
+        }
+      }
+      return {
+        id: expense.id,
+        paidByUserId: expense.paid_by,
+        amount: Number(expense.amount),
+        description: expense.description,
+        splitMode: expense.split_mode,
+        numPeople: expense.num_people,
+        isCleared: !!expense.is_cleared,
+        customAmounts,
+        tripId: expense.trip_id,
+        createdAt: expense.created_at,
+      };
+    });
+  }
+  return expenses.filter((e) => e.tripId === tripId);
+}
+
 function getDbStatus() {
   return {
     mode: supabase ? 'supabase' : 'memory',
@@ -407,6 +477,10 @@ module.exports = {
   clearSettlement,
   findLastExpense,
   deleteExpenseById,
+  createTrip,
+  getTrips,
+  findTripByName,
+  getExpensesByTrip,
   getDbStatus,
   terminateUserByName,
   restoreUserByName,

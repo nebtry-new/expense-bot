@@ -8,7 +8,7 @@ async function handleSummary() {
   const expenses = await getExpenses();
 
   if (!users.length) {
-    return { type: 'summary', reply: 'ยังไม่มีผู้ใช้ในระบบ กรุณาลงทะเบียนก่อน เช่น: ลงทะเบียน คุณA' };
+    return { type: 'summary', reply: 'ยังไม่มีผู้ใช้ในระบบ กรุณาลงทะเบียนก่อน เช่น ลงทะเบียน ปิ๊ก' };
   }
 
   if (users.length < 2) {
