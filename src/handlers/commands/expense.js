@@ -82,7 +82,15 @@ async function handleExpenseLines(inputLines, userContext) {
   };
 
   if (inputLines.length > 1) {
-    const validated = await Promise.all(inputLines.map(validateLine));
+    // Propagate a shared #tag to lines that don't have one
+    const tags = inputLines.map((l) => { const m = l.match(/#[฀-๿a-zA-Z0-9_]+/); return m ? m[0].slice(1) : null; });
+    const uniqueTags = [...new Set(tags.filter(Boolean))];
+    const sharedTag = uniqueTags.length === 1 ? uniqueTags[0] : null;
+    const resolvedLines = sharedTag
+      ? inputLines.map((l, i) => tags[i] ? l : `${l} #${sharedTag}`)
+      : inputLines;
+
+    const validated = await Promise.all(resolvedLines.map(validateLine));
     const errors = validated.filter((r) => r?.type === 'error');
     if (errors.length) {
       return { type: 'error', reply: errors.map((e) => e.reply).join('\n') };
