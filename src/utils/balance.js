@@ -44,18 +44,20 @@ function calculateBalances(expenses = [], users = ['userA', 'userB']) {
     }
 
     if (expense.splitMode === 'custom' && expense.customAmounts) {
+      let payerShare = 0;
       for (const user of validUsers) {
-        const customShare = Number(
+        const share = Number(
           expense.customAmounts[user.id] ??
           expense.customAmounts[user.displayName] ??
           0
         );
         if (String(user.id) === payerId) {
-          net[String(user.id)] += customShare || Number(expense.amount) / validUsers.length;
+          payerShare = share;
         } else {
-          net[String(user.id)] -= customShare || 0;
+          net[String(user.id)] -= share;
         }
       }
+      net[payerId] += Number(expense.amount) - payerShare;
     }
   }
 

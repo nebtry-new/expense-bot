@@ -6,7 +6,7 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function parseCustomSplit(text, userNames = {}) {
+function parseCustomSplit(text, userNames = {}, totalAmount = 0) {
   const { senderName, partnerName } = userNames;
 
   const meParts = ['ฉัน', 'me', 'i'];
@@ -22,10 +22,17 @@ function parseCustomSplit(text, userNames = {}) {
   const partnerMatch = text.match(partnerPattern);
 
   if (meMatch && partnerMatch) {
-    return {
-      me: normalizeNumber(meMatch[1]),
-      partner: normalizeNumber(partnerMatch[1]),
-    };
+    return { me: normalizeNumber(meMatch[1]), partner: normalizeNumber(partnerMatch[1]) };
+  }
+
+  if (meMatch && totalAmount) {
+    const me = normalizeNumber(meMatch[1]);
+    return { me, partner: totalAmount - me };
+  }
+
+  if (partnerMatch && totalAmount) {
+    const partner = normalizeNumber(partnerMatch[1]);
+    return { me: totalAmount - partner, partner };
   }
 
   return null;
@@ -67,7 +74,7 @@ function parseExpenseText(rawText = '', userNames = {}) {
   if (/(ส่วนตัว|ของขวัญ|ไม่หาร|private|personal)/i.test(cleaned)) {
     splitMode = 'none';
   } else if (customTriggerPattern.test(cleaned) && /\d/.test(cleaned)) {
-    customAmounts = parseCustomSplit(cleaned, userNames);
+    customAmounts = parseCustomSplit(cleaned, userNames, amount);
     if (customAmounts) {
       splitMode = 'custom';
     }
