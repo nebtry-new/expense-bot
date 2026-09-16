@@ -57,20 +57,31 @@ async function handleSlipOverride(text, userContext) {
     const allUsers = await getUsers();
     const sender = allUsers.find((u) => u.lineUserId === lineUserId);
     const partner = allUsers.find((u) => u.lineUserId !== lineUserId);
-    if (sender && partner) {
-      const userNames = { senderName: sender.displayName, partnerName: partner.displayName };
-      const parsed = parseCustomSplit(text, userNames, pending.amount);
-      if (parsed) {
+    const userNames = {
+      senderName: sender?.displayName || null,
+      partnerName: partner?.displayName || null,
+    };
+
+    const parsed = parseCustomSplit(text, userNames, pending.amount);
+    if (parsed) {
+      if (sender && partner) {
         splitMode = 'custom';
         customAmounts = {
           [String(sender.id)]: parsed.me,
           [String(partner.id)]: parsed.partner,
         };
+      } else {
+        splitMode = 'custom';
       }
     }
   }
 
-  if (!splitMode) return null;
+  if (!splitMode) {
+    return {
+      type: 'error',
+      reply: `ไม่เข้าใจรูปแบบที่พิมพ์ กรุณาเลือก:\n• ใช่ — หารครึ่ง\n• ไม่หาร — ส่วนตัว\n• หาร 3 — หารตามจำนวนคน\n• ฉัน X แฟน Y — ระบุเอง\n• ยกเลิก — ไม่บันทึก`,
+    };
+  }
 
   delete slipConfirmState.pendingByUser[lineUserId];
 
