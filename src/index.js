@@ -17,14 +17,14 @@ const lineClient = lineConfig.channelAccessToken
   ? new LineClient({ channelAccessToken: lineConfig.channelAccessToken })
   : null;
 
-app.use(express.json());
-
 if (lineConfig.channelSecret && lineConfig.channelAccessToken) {
   app.use('/webhook', line.middleware({
     channelAccessToken: lineConfig.channelAccessToken,
     channelSecret: lineConfig.channelSecret,
   }));
 }
+
+app.use(express.json());
 
 app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'expense-bot' });
