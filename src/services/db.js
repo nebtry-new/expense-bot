@@ -307,6 +307,65 @@ async function clearSettlement() {
   }
 }
 
+async function findLastExpense(paidByUserId) {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('id, description, amount')
+      .eq('paid_by', paidByUserId)
+      .eq('is_cleared', false)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    if (!data?.length) return null;
+    return { id: data[0].id, description: data[0].description, amount: Number(data[0].amount) };
+  }
+  const found = [...expenses].reverse().find(
+    (e) => String(e.paidByUserId) === String(paidByUserId) && !e.isCleared
+  );
+  return found ? { id: found.id, description: found.description, amount: Number(found.amount) } : null;
+}
+
+async function deleteExpenseById(id) {
+  if (supabase) {
+    const { error } = await supabase.from('expenses').delete().eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  const idx = expenses.findIndex((e) => e.id === id);
+  if (idx >= 0) expenses.splice(idx, 1);
+}
+
+async function deleteLastExpense(paidByUserId) {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('id, description, amount')
+      .eq('paid_by', paidByUserId)
+      .eq('is_cleared', false)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error) throw error;
+    if (!data?.length) return null;
+
+    const target = data[0];
+    const { error: delError } = await supabase.from('expenses').delete().eq('id', target.id);
+    if (delError) throw delError;
+
+    return { id: target.id, description: target.description, amount: Number(target.amount) };
+  }
+
+  const idx = [...expenses].reverse().findIndex(
+    (e) => String(e.paidByUserId) === String(paidByUserId) && !e.isCleared
+  );
+  if (idx === -1) return null;
+
+  const realIdx = expenses.length - 1 - idx;
+  const [removed] = expenses.splice(realIdx, 1);
+  return { id: removed.id, description: removed.description, amount: Number(removed.amount) };
+}
+
 function getDbStatus() {
   return {
     mode: supabase ? 'supabase' : 'memory',
@@ -325,6 +384,8 @@ module.exports = {
   addExpense,
   getExpenses,
   clearSettlement,
+  findLastExpense,
+  deleteExpenseById,
   getDbStatus,
   terminateUserByName,
   restoreUserByName,

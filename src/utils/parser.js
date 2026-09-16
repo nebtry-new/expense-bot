@@ -74,10 +74,12 @@ function parseExpenseText(rawText = '', userNames = {}) {
   }
 
   if (splitMode !== 'custom') {
-    const perHeadMatch = cleaned.match(/(?:หาร|split)\s*(\d+)\s*คน/i);
+    const perHeadMatch = cleaned.match(/(?:^|\s)(?:หาร|split)\s*(\d+)(?:\s*คน)?/i)
+      ?? cleaned.match(/\d+\s*\/\s*(\d+)/);
     if (perHeadMatch) {
-      splitMode = 'per_head';
       numPeople = Number.parseInt(perHeadMatch[1], 10);
+      splitMode = numPeople === 2 ? 'half' : 'per_head';
+      if (splitMode === 'half') numPeople = null;
     }
   }
 
