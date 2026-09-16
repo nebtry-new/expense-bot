@@ -16,12 +16,20 @@ const lineConfig = {
 };
 
 const LineClient = line.messagingApi?.MessagingApiClient || line.LineBotClient || line.Client;
+const LineBlobClient = line.messagingApi?.MessagingApiBlobClient;
+
 const lineClient = lineConfig.channelAccessToken
   ? new LineClient({ channelAccessToken: lineConfig.channelAccessToken })
   : null;
 
+const lineBlobClient = lineConfig.channelAccessToken && LineBlobClient
+  ? new LineBlobClient({ channelAccessToken: lineConfig.channelAccessToken })
+  : null;
+
 async function getImageBase64(messageId) {
-  const response = await lineClient.getMessageContent(messageId);
+  const client = lineBlobClient || lineClient;
+  if (!client) throw new Error('LINE client not configured');
+  const response = await client.getMessageContent(messageId);
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer).toString('base64');
 }
