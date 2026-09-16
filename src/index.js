@@ -2,6 +2,7 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const dotenv = require('dotenv');
 const { handleTextMessage } = require('./handlers/text');
+const { getUsers, getExpenses, getDbStatus } = require('./services/db');
 
 dotenv.config();
 
@@ -43,6 +44,28 @@ app.use(express.json());
 
 app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'expense-bot' });
+});
+
+app.get('/debug-data', async (req, res) => {
+  try {
+    const users = await getUsers();
+    const expenses = await getExpenses();
+    res.json({
+      db: getDbStatus(),
+      tables: {
+        users,
+        expenses,
+        expense_splits: [],
+        monthly_summaries: [],
+        trips: [],
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to load debug data',
+      message: error.message,
+    });
+  }
 });
 
 app.post('/webhook', async (req, res) => {

@@ -119,6 +119,26 @@ When using LINE chat:
 - `ค่าอาหาร 350`
 - `ค่าเดินทาง 800 หาร 2 คน`
 - `สรุป`
+- `help`
+- `reset-all`
+- `reset-confirm`
+- `terminate user ปิ๊ก`
+- `restore user ปิ๊ก`
+
+## User lifecycle and reset commands
+
+This bot is designed for exactly two active users only.
+
+- `reset-all`: starts a full reset flow and asks for confirmation
+- `reset-confirm`: confirms and clears all active user/expense data
+- `terminate user <name>`: soft-disables a user
+- `restore user <name>`: reactivates a terminated user
+
+Safety rule:
+
+- Never allow a third active user to register
+- A reset requires explicit confirmation before clearing the system
+- User termination keeps a historical record instead of hard-deleting immediately
 
 ## Deploy to Railway
 

@@ -1,45 +1,50 @@
 function calculateBalances(expenses = [], users = ['userA', 'userB']) {
-  const [userA, userB] = users;
-  const net = {
-    [userA]: 0,
-    [userB]: 0,
-  };
+  const validUsers = (Array.isArray(users) ? users.filter(Boolean) : ['userA', 'userB']).length
+    ? Array.from(new Set(Array.isArray(users) ? users.filter(Boolean) : ['userA', 'userB']))
+    : ['userA', 'userB'];
+
+  const net = Object.fromEntries(validUsers.map((name) => [name, 0]));
 
   for (const expense of expenses) {
     if (!expense || !expense.paidBy || !expense.amount || expense.splitMode === 'none') {
       continue;
     }
 
-    const payer = users.includes(expense.paidBy) ? expense.paidBy : userA;
-    const other = users.find((name) => name !== payer) || userB;
+    const payer = validUsers.includes(expense.paidBy) ? expense.paidBy : validUsers[0];
+    const others = validUsers.filter((name) => name !== payer);
 
     if (expense.splitMode === 'half' || expense.splitMode === undefined) {
-      const share = expense.amount / 2;
-      net[payer] += share;
-      net[other] -= share;
+      const share = Number(expense.amount) / validUsers.length;
+      net[payer] += share * (validUsers.length - 1);
+      for (const other of others) {
+        net[other] -= share;
+      }
       continue;
     }
 
     if (expense.splitMode === 'per_head') {
-      const people = Number(expense.numPeople || 2);
-      const share = expense.amount / people;
-      net[payer] += share * (people - 1);
-      net[other] -= share;
+      const people = Number(expense.numPeople || validUsers.length);
+      const share = Number(expense.amount) / people;
+      net[payer] += share * Math.max(people - 1, 0);
+      for (const other of others) {
+        net[other] -= share;
+      }
       continue;
     }
 
     if (expense.splitMode === 'custom' && expense.customAmounts) {
-      const payerShare = expense.customAmounts[payer] ?? expense.amount / 2;
-      const otherShare = expense.customAmounts[other] ?? expense.amount - payerShare;
-      net[payer] += payerShare;
-      net[other] -= otherShare;
+      for (const user of validUsers) {
+        const customShare = Number(expense.customAmounts[user] ?? 0);
+        if (user === payer) {
+          net[user] += customShare || Number(expense.amount) / validUsers.length;
+        } else {
+          net[user] -= customShare || 0;
+        }
+      }
     }
   }
 
-  return {
-    [userA]: Number(net[userA] || 0),
-    [userB]: Number(net[userB] || 0),
-  };
+  return Object.fromEntries(validUsers.map((name) => [name, Number(net[name] || 0)]));
 }
 
 module.exports = {
