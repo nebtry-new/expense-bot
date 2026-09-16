@@ -18,10 +18,11 @@ const HELP_TEXT = [
   '2) สรุปค่าใช้จ่ายเดือนนี้: สรุปยอดเดือนนี้',
   '3) จ่ายแล้ว: แจ้งให้ที่รักยืนยันการรับเงิน',
   '4) รับแล้ว: ยืนยันรับเงินและเคลียร์ยอด',
-  '5) ลงทะเบียน: ลงทะเบียน (ชื่อ)',
-  '6) เปลี่ยนชื่อ: เปลี่ยนชื่อ (ชื่อใหม่)',
-  '7) ยกเลิกรายการล่าสุด: ยกเลิกรายการล่าสุด',
-  '8) reset: reset-all → reset-confirm',
+  '5) ดูรายชื่อผู้ใช้: ผู้ใช้',
+  '6) ลงทะเบียน: ลงทะเบียน (ชื่อ)',
+  '7) เปลี่ยนชื่อ: เปลี่ยนชื่อ (ชื่อใหม่)',
+  '8) ยกเลิกรายการล่าสุด: ยกเลิกรายการล่าสุด',
+  '9) reset: reset-all → reset-confirm',
   '',
   'หมายเหตุ: รองรับผู้ใช้ได้สูงสุด 2 คนเท่านั้น',
 ].join('\n');
@@ -66,6 +67,13 @@ async function handleTextMessage(text, userContext = {}) {
     return user
       ? { type: 'restore_user', reply: `${user.displayName} กลับมาใช้งานได้แล้ว` }
       : { type: 'error', reply: `ไม่พบผู้ใช้ ${restoreMatch[1].trim()} ที่ถูกยกเลิก` };
+  }
+
+  if (/^(ผู้ใช้|users|รายชื่อผู้ใช้)$/i.test(normalized)) {
+    const users = await getUsers();
+    if (!users.length) return { type: 'users', reply: 'ยังไม่มีผู้ใช้ในระบบ กรุณาลงทะเบียนก่อน' };
+    const lines = users.map((u, i) => `${i + 1}. ${u.displayName}`);
+    return { type: 'users', reply: `ผู้ใช้ในระบบ (${users.length}/2):\n${lines.join('\n')}` };
   }
 
   const registerMatch = normalized.match(/^ลงทะเบียน\s*(.+)$/i);

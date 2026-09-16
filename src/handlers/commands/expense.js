@@ -17,12 +17,31 @@ async function handleExpenseLines(inputLines, userContext) {
     const p = parseExpenseText(line, userNames);
     if (!p.amount) return null;
 
-    let customAmounts = null;
-    if (p.customAmounts && sender && partner) {
-      customAmounts = {
-        [String(sender.id)]: p.customAmounts.me,
-        [String(partner.id)]: p.customAmounts.partner,
+    if (p.splitMode === 'half' && p.splitWarning) {
+      return {
+        type: 'error',
+        reply: `"${line}" — ชื่อในการแบ่งจ่าย "${p.splitWarning}" ไม่ตรงกับผู้ใช้ในระบบ ลองใช้ ฉัน/แฟน หรือชื่อที่ลงทะเบียนไว้แทน`,
       };
+    }
+
+    let customAmounts = null;
+    if (p.splitMode === 'custom') {
+      if (!partner) {
+        return { type: 'error', reply: `"${line}" — ไม่สามารถระบุการแบ่งจ่ายได้ ยังไม่มีผู้ใช้คนที่ 2 ในระบบ` };
+      }
+      if (p.customAmounts) {
+        const { me, partner: partnerAmt } = p.customAmounts;
+        if (Math.abs(me + partnerAmt - p.amount) > 0.01) {
+          return {
+            type: 'error',
+            reply: `"${line}" — ยอดที่ระบุ (${me} + ${partnerAmt} = ${me + partnerAmt}) ไม่ตรงกับยอดรวม ${p.amount} บาท`,
+          };
+        }
+        customAmounts = {
+          [String(sender.id)]: me,
+          [String(partner.id)]: partnerAmt,
+        };
+      }
     }
 
     const saved = await addExpense({
@@ -39,7 +58,12 @@ async function handleExpenseLines(inputLines, userContext) {
   };
 
   if (inputLines.length > 1) {
-    const results = (await Promise.all(inputLines.map(saveExpenseLine))).filter(Boolean);
+    const rawResults = await Promise.all(inputLines.map(saveExpenseLine));
+    const errors = rawResults.filter((r) => r?.type === 'error');
+    if (errors.length) {
+      return { type: 'error', reply: errors.map((e) => e.reply).join('\n') };
+    }
+    const results = rawResults.filter(Boolean);
 
     if (!results.length) {
       return { type: 'noop', reply: 'ไม่พบจำนวนเงินที่บันทึกได้' };
@@ -58,6 +82,9 @@ async function handleExpenseLines(inputLines, userContext) {
   const result = await saveExpenseLine(inputLines[0]);
   if (!result) {
     return { type: 'noop', reply: 'ไม่พบจำนวนเงินที่บันทึกได้' };
+  }
+  if (result.type === 'error') {
+    return result;
   }
 
   return {

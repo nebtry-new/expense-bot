@@ -118,6 +118,11 @@ app.post('/webhook', async (req, res) => {
       }
     }
 
+    if (event.type === 'follow') {
+      const greetingText = 'ยินดีต้อนรับ! 👋\nบอทนี้ใช้สำหรับบันทึกค่าใช้จ่ายร่วมกัน\n\nเริ่มใช้งาน พิมพ์ว่า ลงทะเบียน (เว้นวรรค) ตามด้วยชื่อ\nเช่น ลงทะเบียน ปิ๊ก\n\nพิมพ์ help เพื่อดูคู่มือการใช้งาน';
+      await sendReplyMessage(event, greetingText);
+    }
+
     if (event.type === 'message' && event.message?.type === 'image') {
       const replyText = 'รับรูป slip แล้ว แต่ยังไม่ทำ OCR แบบเต็มใน Sprint 1 ค่ะ';
       replies.push({

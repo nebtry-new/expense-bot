@@ -90,12 +90,25 @@ function parseExpenseText(rawText = '', userNames = {}) {
     }
   }
 
+  let splitWarning = null;
+  if (splitMode === 'half' && amountMatch?.[3]) {
+    const rest = amountMatch[3].trim();
+    if (rest) {
+      const suffixNumbers = (rest.match(/\d+(?:\.\d+)?/g) || []).map(Number);
+      const suffixSum = suffixNumbers.reduce((s, n) => s + n, 0);
+      if (suffixNumbers.length > 0 && Math.abs(suffixSum - amount) < 0.01) {
+        splitWarning = rest;
+      }
+    }
+  }
+
   return {
     amount,
     description,
     splitMode,
     numPeople,
     customAmounts,
+    splitWarning,
   };
 }
 
