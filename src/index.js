@@ -27,11 +27,13 @@ const lineBlobClient = lineConfig.channelAccessToken && LineBlobClient
   : null;
 
 async function getImageBase64(messageId) {
-  const client = lineBlobClient || lineClient;
-  if (!client) throw new Error('LINE client not configured');
-  const response = await client.getMessageContent(messageId);
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer).toString('base64');
+  if (!lineBlobClient) throw new Error('LINE blob client not configured');
+  const stream = await lineBlobClient.getMessageContent(messageId);
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString('base64');
 }
 
 async function sendReplyMessage(event, text) {
