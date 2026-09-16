@@ -112,6 +112,15 @@ async function handleConfirmYes(userContext) {
 
   const pending = settlementState.pendingByUser[currentLineUserId];
   if (!pending) {
+    const asDebtor = Object.values(settlementState.pendingByUser).find(
+      (p) => p.debtorLineUserId === currentLineUserId
+    );
+    if (asDebtor) {
+      return {
+        type: 'noop',
+        reply: `คุณเป็นฝ่ายต้องจ่าย ${asDebtor.amount.toFixed(2)} บาท ให้ ${asDebtor.creditorName}\nพิมพ์ จ่ายแล้ว เมื่อโอนเงินแล้ว`,
+      };
+    }
     return { type: 'noop', reply: 'ไม่มีรายการที่รอการยืนยัน' };
   }
 

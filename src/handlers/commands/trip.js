@@ -1,6 +1,8 @@
 const { createTrip, getTrips, getExpensesByTrip, findTripByName, getUsers } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
 const { parseTripCreation, formatSplitMode } = require('../../utils/parser');
+const { buildSettlementNotification } = require('./settlement');
+const { settlementState } = require('../state');
 
 async function handleCreateTrip(input) {
   const { name, defaultSplitMode, defaultNumPeople } = parseTripCreation(input);
@@ -47,6 +49,7 @@ async function handleTripSummary(name) {
 
   const lines = [`สรุปทริป "${trip.name}"`, `รวม: ${total.toLocaleString()} บาท (${tripExpenses.length} รายการ)`];
 
+  let notification = null;
   if (users.length === 2) {
     const [a, b] = users;
     const balA = Number(balances[String(a.id)] ?? 0);
@@ -57,13 +60,20 @@ async function handleTripSummary(name) {
       } else if (balB >= 0 && balA <= 0) {
         lines.push(`${a.displayName} ต้องจ่ายคืน ${b.displayName} ${formatAmount(balA)} บาท`);
       }
+      notification = buildSettlementNotification(balances, users);
     }
   }
 
   const itemLines = tripExpenses.map((e) => `• ${e.description} ${Number(e.amount).toLocaleString()} บาท`);
   lines.push('', ...itemLines);
 
-  return { type: 'trip_summary', reply: lines.join('\n') };
+  const prompt = notification ? '\n\nต้องการเรียกเก็บเงินเลยไหม? พิมพ์ ใช่ หรือ เรียกเก็บเงิน' : '';
+
+  if (notification?.creditorLineUserId) {
+    settlementState.pendingByUser[notification.creditorLineUserId] = notification;
+  }
+
+  return { type: 'trip_summary', reply: lines.join('\n') + prompt, notification };
 }
 
 module.exports = { handleCreateTrip, handleListTrips, handleTripSummary };
