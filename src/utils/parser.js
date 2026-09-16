@@ -114,4 +114,5 @@ function parseExpenseText(rawText = '', userNames = {}) {
 
 module.exports = {
   parseExpenseText,
+  parseCustomSplit,
 };

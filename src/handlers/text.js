@@ -2,7 +2,8 @@ const { registerUser, getUsers, resetData, terminateUserByName, restoreUserByNam
 const { handleSummary, handleMonthlySummary } = require('./commands/summary');
 const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('./commands/settlement');
 const { handleExpenseLines, handleDeleteLastExpense } = require('./commands/expense');
-const { clearAllState } = require('./state');
+const { handleSlipOverride } = require('./commands/slip');
+const { clearAllState, slipConfirmState } = require('./state');
 
 const HELP_TEXT = [
   'คู่มือการใช้งาน',
@@ -118,6 +119,11 @@ async function handleTextMessage(text, userContext = {}) {
 
   if (/^(สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้)$/i.test(normalized)) {
     return handleMonthlySummary();
+  }
+
+  if (slipConfirmState.pendingByUser[userContext.lineUserId || 'unknown']) {
+    const override = await handleSlipOverride(normalized, userContext);
+    if (override) return override;
   }
 
   const inputLines = normalized.split('\n').map((l) => l.trim()).filter(Boolean);

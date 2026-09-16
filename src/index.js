@@ -3,6 +3,8 @@ const line = require('@line/bot-sdk');
 const dotenv = require('dotenv');
 const { handleTextMessage } = require('./handlers/text');
 const { getUsers, getExpenses, getDbStatus } = require('./services/db');
+const { analyzeSlip } = require('./services/claude');
+const { slipConfirmState } = require('./handlers/state');
 
 dotenv.config();
 
@@ -17,6 +19,12 @@ const LineClient = line.messagingApi?.MessagingApiClient || line.LineBotClient |
 const lineClient = lineConfig.channelAccessToken
   ? new LineClient({ channelAccessToken: lineConfig.channelAccessToken })
   : null;
+
+async function getImageBase64(messageId) {
+  const response = await lineClient.getMessageContent(messageId);
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer).toString('base64');
+}
 
 async function sendReplyMessage(event, text) {
   if (!lineClient || !event?.replyToken) {
@@ -124,13 +132,33 @@ app.post('/webhook', async (req, res) => {
     }
 
     if (event.type === 'message' && event.message?.type === 'image') {
-      const replyText = 'รับรูป slip แล้ว แต่ยังไม่ทำ OCR แบบเต็มใน Sprint 1 ค่ะ';
-      replies.push({
-        type: 'text',
-        text: replyText,
-      });
+      const lineUserId = event.source?.userId || 'unknown';
 
-      await sendReplyMessage(event, replyText);
+      try {
+        const base64 = await getImageBase64(event.message.id);
+        const slipResult = await analyzeSlip(base64);
+
+        if (!slipResult.amount) {
+          await sendReplyMessage(event, 'ไม่พบยอดเงินใน slip กรุณาส่งรูปที่ชัดเจนกว่านี้');
+        } else {
+          const allUsers = await getUsers();
+          const sender = allUsers.find((u) => u.lineUserId === lineUserId);
+
+          slipConfirmState.pendingByUser[lineUserId] = {
+            amount: slipResult.amount,
+            description: slipResult.description,
+            paidByUserId: sender?.id || lineUserId,
+            paidByDisplayName: sender?.displayName || lineUserId,
+          };
+
+          const replyText = `พบยอด ${Number(slipResult.amount).toLocaleString()} บาท (${slipResult.description})\n\nบันทึกแบบไหน?\n• ใช่ — หารครึ่ง\n• ไม่หาร — ส่วนตัว\n• หาร 3 — หารตามจำนวนคน\n• ฉัน X แฟน Y — ระบุเอง\n• ยกเลิก — ไม่บันทึก`;
+          replies.push({ type: 'text', text: replyText });
+          await sendReplyMessage(event, replyText);
+        }
+      } catch (err) {
+        console.error('Slip analysis failed:', err.message);
+        await sendReplyMessage(event, 'เกิดข้อผิดพลาดในการอ่าน slip กรุณาลองใหม่อีกครั้ง');
+      }
     }
   }
 

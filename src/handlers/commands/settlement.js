@@ -1,6 +1,7 @@
 const { getUsers, getExpenses, clearSettlement, deleteExpenseById } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
 const { settlementState, paymentConfirmState, deleteConfirmState } = require('../state');
+const { handleSlipConfirm } = require('./slip');
 
 function buildSettlementNotification(summary, users) {
   if (!Array.isArray(users) || users.length !== 2) return null;
@@ -101,6 +102,9 @@ async function handleConfirmYes(userContext) {
       reply: `ยกเลิกรายการแล้ว: ${pendingDelete.description} ${Number(pendingDelete.amount).toLocaleString()} บาท`,
     };
   }
+
+  const slipResult = await handleSlipConfirm(userContext);
+  if (slipResult) return slipResult;
 
   const pending = settlementState.pendingByUser[currentLineUserId];
   if (!pending) {
