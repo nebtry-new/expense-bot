@@ -94,9 +94,11 @@ function parseExpenseText(rawText = '', userNames = {}) {
   if (splitMode === 'half' && amountMatch?.[3]) {
     const rest = amountMatch[3].trim();
     if (rest) {
+      const pairs = rest.match(/[฀-๿a-zA-Z]+\s*\d+(?:\.\d+)?/g) || [];
       const suffixNumbers = (rest.match(/\d+(?:\.\d+)?/g) || []).map(Number);
       const suffixSum = suffixNumbers.reduce((s, n) => s + n, 0);
-      if (suffixNumbers.length > 0 && Math.abs(suffixSum - amount) < 0.01) {
+      // Require ≥2 word-number pairs to reduce false positives (e.g. "มิเตอร์ 200")
+      if (pairs.length >= 2 && Math.abs(suffixSum - amount) < 0.01) {
         splitWarning = rest;
       }
     }

@@ -13,7 +13,8 @@ async function handleExpenseLines(inputLines, userContext) {
     partnerName: partner?.displayName || null,
   };
 
-  const saveExpenseLine = async (line) => {
+  // Validate only — no DB writes. Returns { parsed, customAmounts } | { type: 'error' } | null
+  const validateLine = (line) => {
     const p = parseExpenseText(line, userNames);
     if (!p.amount) return null;
 
@@ -26,6 +27,9 @@ async function handleExpenseLines(inputLines, userContext) {
 
     let customAmounts = null;
     if (p.splitMode === 'custom') {
+      if (!sender) {
+        return { type: 'error', reply: `"${line}" — ไม่พบผู้ใช้ของคุณในระบบ กรุณาลงทะเบียนก่อน` };
+      }
       if (!partner) {
         return { type: 'error', reply: `"${line}" — ไม่สามารถระบุการแบ่งจ่ายได้ ยังไม่มีผู้ใช้คนที่ 2 ในระบบ` };
       }
@@ -44,31 +48,36 @@ async function handleExpenseLines(inputLines, userContext) {
       }
     }
 
+    return { parsed: p, customAmounts, line };
+  };
+
+  // Write to DB — only called after all validations pass
+  const writeLine = async ({ parsed, customAmounts }) => {
     const saved = await addExpense({
       paidByUserId: sender ? sender.id : lineUserId,
       paidByDisplayName: sender ? sender.displayName : lineUserId,
-      description: p.description,
-      amount: p.amount,
-      splitMode: p.splitMode,
-      numPeople: p.numPeople,
+      description: parsed.description,
+      amount: parsed.amount,
+      splitMode: parsed.splitMode,
+      numPeople: parsed.numPeople,
       customAmounts,
     });
-
-    return { parsed: p, saved };
+    return { parsed, saved };
   };
 
   if (inputLines.length > 1) {
-    const rawResults = await Promise.all(inputLines.map(saveExpenseLine));
-    const errors = rawResults.filter((r) => r?.type === 'error');
+    const validated = inputLines.map(validateLine);
+    const errors = validated.filter((r) => r?.type === 'error');
     if (errors.length) {
       return { type: 'error', reply: errors.map((e) => e.reply).join('\n') };
     }
-    const results = rawResults.filter(Boolean);
 
-    if (!results.length) {
+    const toWrite = validated.filter(Boolean);
+    if (!toWrite.length) {
       return { type: 'noop', reply: 'ไม่พบจำนวนเงินที่บันทึกได้' };
     }
 
+    const results = await Promise.all(toWrite.map(writeLine));
     const total = results.reduce((sum, r) => sum + r.parsed.amount, 0);
     const itemLines = results.map((r) => `• ${r.parsed.description} ${r.parsed.amount.toLocaleString()} บาท (${r.parsed.splitMode})`);
 
@@ -79,14 +88,15 @@ async function handleExpenseLines(inputLines, userContext) {
     };
   }
 
-  const result = await saveExpenseLine(inputLines[0]);
-  if (!result) {
+  const validated = validateLine(inputLines[0]);
+  if (!validated) {
     return { type: 'noop', reply: 'ไม่พบจำนวนเงินที่บันทึกได้' };
   }
-  if (result.type === 'error') {
-    return result;
+  if (validated.type === 'error') {
+    return validated;
   }
 
+  const result = await writeLine(validated);
   return {
     type: 'expense',
     parsed: result.parsed,

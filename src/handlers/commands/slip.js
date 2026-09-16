@@ -71,7 +71,10 @@ async function handleSlipOverride(text, userContext) {
           [String(partner.id)]: parsed.partner,
         };
       } else {
-        splitMode = 'custom';
+        return {
+          type: 'error',
+          reply: 'ไม่สามารถระบุการแบ่งจ่ายได้ ยังไม่ครบ 2 ผู้ใช้ในระบบ',
+        };
       }
     }
   }

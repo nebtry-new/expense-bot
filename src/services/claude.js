@@ -30,12 +30,18 @@ async function analyzeSlip(imageBase64, mediaType = 'image/jpeg') {
 
   const text = message.content[0]?.text?.trim() || '';
   try {
-    const jsonMatch = text.match(/\{[\s\S]*?\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
+    // Try direct parse first, then greedy regex (handles nested braces in description strings)
+    let raw;
+    try {
+      raw = JSON.parse(text);
+    } catch {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) raw = JSON.parse(jsonMatch[0]);
+    }
+    if (raw) {
       return {
-        amount: Number(parsed.amount) || 0,
-        description: String(parsed.description || 'slip โอนเงิน').trim(),
+        amount: Number(raw.amount) || 0,
+        description: String(raw.description || 'slip โอนเงิน').trim(),
       };
     }
   } catch (err) {

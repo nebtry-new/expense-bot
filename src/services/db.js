@@ -250,11 +250,21 @@ async function addExpense(expense) {
     };
 
     const { data, error } = await supabase.from('expenses').insert(payload).select();
-    if (error) {
-      throw error;
+    if (error) throw error;
+
+    const saved = data?.[0] || payload;
+
+    if (expense.customAmounts && saved.id) {
+      const splitRows = Object.entries(expense.customAmounts).map(([userId, amount]) => ({
+        expense_id: saved.id,
+        user_id: userId,
+        amount,
+      }));
+      const { error: splitError } = await supabase.from('expense_splits').insert(splitRows);
+      if (splitError) throw splitError;
     }
 
-    return data?.[0] || payload;
+    return saved;
   }
 
   const nextExpense = {
@@ -271,22 +281,33 @@ async function addExpense(expense) {
 
 async function getExpenses() {
   if (supabase) {
-    const { data, error } = await supabase.from('expenses').select('*');
-    if (error) {
-      throw error;
-    }
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*, expense_splits(user_id, amount)')
+      .order('created_at', { ascending: true });
+    if (error) throw error;
 
-    return data.map((expense) => ({
-      id: expense.id,
-      paidByUserId: expense.paid_by,
-      amount: Number(expense.amount),
-      description: expense.description,
-      category: expense.category,
-      splitMode: expense.split_mode,
-      numPeople: expense.num_people,
-      isCleared: !!expense.is_cleared,
-      createdAt: expense.created_at,
-    }));
+    return data.map((expense) => {
+      let customAmounts = null;
+      if (expense.split_mode === 'custom' && expense.expense_splits?.length) {
+        customAmounts = {};
+        for (const split of expense.expense_splits) {
+          customAmounts[String(split.user_id)] = Number(split.amount);
+        }
+      }
+      return {
+        id: expense.id,
+        paidByUserId: expense.paid_by,
+        amount: Number(expense.amount),
+        description: expense.description,
+        category: expense.category,
+        splitMode: expense.split_mode,
+        numPeople: expense.num_people,
+        isCleared: !!expense.is_cleared,
+        customAmounts,
+        createdAt: expense.created_at,
+      };
+    });
   }
 
   return [...expenses];

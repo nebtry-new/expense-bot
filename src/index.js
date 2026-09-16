@@ -148,7 +148,7 @@ app.post('/webhook', async (req, res) => {
         const base64 = await getImageBase64(event.message.id);
         const slipResult = await analyzeSlip(base64);
 
-        if (!slipResult.amount) {
+        if (slipResult.amount <= 0) {
           await sendReplyMessage(event, 'ไม่พบยอดเงินใน slip กรุณาส่งรูปที่ชัดเจนกว่านี้');
         } else {
           const allUsers = await getUsers();

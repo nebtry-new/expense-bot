@@ -1,6 +1,6 @@
 const { getUsers, getExpenses, clearSettlement, deleteExpenseById } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
-const { settlementState, paymentConfirmState, deleteConfirmState } = require('../state');
+const { settlementState, paymentConfirmState, deleteConfirmState, slipConfirmState } = require('../state');
 const { handleSlipConfirm } = require('./slip');
 
 function buildSettlementNotification(summary, users) {
@@ -104,11 +104,15 @@ async function handleConfirmYes(userContext) {
   }
 
   const slipResult = await handleSlipConfirm(userContext);
-  if (slipResult) return slipResult;
+  if (slipResult) {
+    // Clear any orphaned settlement state so creditor isn't stuck waiting
+    delete settlementState.pendingByUser[currentLineUserId];
+    return slipResult;
+  }
 
   const pending = settlementState.pendingByUser[currentLineUserId];
   if (!pending) {
-    return { type: 'settlement_pending_missing', reply: 'ยังไม่มีคำสั่งเรียกเก็บเงินที่รอยืนยันในตอนนี้' };
+    return { type: 'noop', reply: 'ไม่มีรายการที่รอการยืนยัน' };
   }
 
   delete settlementState.pendingByUser[currentLineUserId];
