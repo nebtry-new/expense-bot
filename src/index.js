@@ -12,7 +12,7 @@ const lineConfig = {
   channelSecret: process.env.LINE_CHANNEL_SECRET || '',
 };
 
-const LineClient = line.LineBotClient || line.Client;
+const LineClient = line.messagingApi?.MessagingApiClient || line.LineBotClient || line.Client;
 const lineClient = lineConfig.channelAccessToken
   ? new LineClient({ channelAccessToken: lineConfig.channelAccessToken })
   : null;
@@ -53,9 +53,12 @@ app.post('/webhook', async (req, res) => {
       });
 
       if (lineClient && event.replyToken) {
-        await lineClient.replyMessage(event.replyToken, {
-          type: 'text',
-          text: result.reply,
+        await lineClient.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{
+            type: 'text',
+            text: result.reply,
+          }],
         });
       }
     }
@@ -68,9 +71,12 @@ app.post('/webhook', async (req, res) => {
       });
 
       if (lineClient && event.replyToken) {
-        await lineClient.replyMessage(event.replyToken, {
-          type: 'text',
-          text: replyText,
+        await lineClient.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{
+            type: 'text',
+            text: replyText,
+          }],
         });
       }
     }
