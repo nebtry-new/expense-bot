@@ -17,6 +17,21 @@ const lineClient = lineConfig.channelAccessToken
   ? new LineClient({ channelAccessToken: lineConfig.channelAccessToken })
   : null;
 
+async function sendReplyMessage(event, text) {
+  if (!lineClient || !event?.replyToken) {
+    return;
+  }
+
+  try {
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{ type: 'text', text }],
+    });
+  } catch (error) {
+    console.error('LINE replyMessage failed:', error?.response?.data || error.message || error);
+  }
+}
+
 if (lineConfig.channelSecret && lineConfig.channelAccessToken) {
   app.use('/webhook', line.middleware({
     channelAccessToken: lineConfig.channelAccessToken,
@@ -52,15 +67,7 @@ app.post('/webhook', async (req, res) => {
         text: result.reply,
       });
 
-      if (lineClient && event.replyToken) {
-        await lineClient.replyMessage({
-          replyToken: event.replyToken,
-          messages: [{
-            type: 'text',
-            text: result.reply,
-          }],
-        });
-      }
+      await sendReplyMessage(event, result.reply);
     }
 
     if (event.type === 'message' && event.message?.type === 'image') {
@@ -70,15 +77,7 @@ app.post('/webhook', async (req, res) => {
         text: replyText,
       });
 
-      if (lineClient && event.replyToken) {
-        await lineClient.replyMessage({
-          replyToken: event.replyToken,
-          messages: [{
-            type: 'text',
-            text: replyText,
-          }],
-        });
-      }
+      await sendReplyMessage(event, replyText);
     }
   }
 
