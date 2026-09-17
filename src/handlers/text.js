@@ -4,7 +4,7 @@ const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('
 const { handleExpenseLines, handleDeleteLastExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
 const { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleListPlaces } = require('./commands/trip');
-const { handleSetCarProfile, handleMapsLinkForEv, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
+const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
 const { clearAllState, slipConfirmState } = require('./state');
 
@@ -175,8 +175,14 @@ async function handleTextMessage(text, userContext = {}) {
   // Google Maps directions link → store pending EV route, ask for battery %
   const mapsUrl = extractMapsUrl(normalized);
   if (mapsUrl) {
-    const evResult = await handleMapsLinkForEv(mapsUrl, lineUserId);
-    if (evResult) return evResult;
+    // If already in location-pending flow, treat link as destination only
+    if (evRouteState.pendingByUser[lineUserId]?.type === 'location') {
+      const evResult = await handleMapsDestinationForLocation(mapsUrl, lineUserId);
+      if (evResult) return evResult;
+    } else {
+      const evResult = await handleMapsLinkForEv(mapsUrl, lineUserId);
+      if (evResult) return evResult;
+    }
   }
 
   // Battery % reply for pending EV route (link or location flow)

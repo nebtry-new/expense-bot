@@ -77,6 +77,29 @@ async function handleMapsLinkForEv(url, lineUserId) {
   };
 }
 
+// Called when user is in location-pending flow and sends a Maps link as destination
+async function handleMapsDestinationForLocation(url, lineUserId) {
+  const pending = evRouteState.pendingByUser[lineUserId];
+  if (!pending || pending.type !== 'location') return null;
+
+  const parsed = await parseMapsUrl(url);
+  const destination = parsed?.destination || null;
+
+  if (!destination) {
+    return {
+      type: 'error',
+      reply: 'อ่านปลายทางจาก link ไม่ได้ กรุณาพิมพ์ชื่อปลายทาง เช่น หัวหิน 80%',
+    };
+  }
+
+  pending.destination = destination;
+
+  return {
+    type: 'ev_awaiting_battery',
+    reply: `ปลายทาง: ${destination}\nแบตเหลือกี่ % ครับ? (เช่น 80%)`,
+  };
+}
+
 // Called when user sends a LINE location event
 function handleLocationForEv(lat, lng, address, lineUserId) {
   const origin = address ? `${address} (${lat},${lng})` : `${lat},${lng}`;
@@ -125,4 +148,4 @@ async function handleEvBatteryReply(text, lineUserId) {
   return { type: 'ev_route', reply: result };
 }
 
-module.exports = { handleSetCarProfile, handleMapsLinkForEv, handleLocationForEv, handleEvBatteryReply, extractMapsUrl };
+module.exports = { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleLocationForEv, handleEvBatteryReply, extractMapsUrl };

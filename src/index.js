@@ -120,9 +120,10 @@ app.post('/webhook', async (req, res) => {
 
       // Detect EV battery reply that will trigger a slow web_search
       const evPending = evRouteState.pendingByUser[lineUserId];
-      const isEvBatteryReply = evPending && (
+      const containsMapsUrl = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/.test(messageText);
+      const isEvBatteryReply = evPending && !containsMapsUrl && (
         /^\d+%?$/.test(messageText.trim()) ||
-        (evPending.type === 'location' && /\d+/.test(messageText))
+        (evPending.type === 'location' && evPending.destination && /\d+/.test(messageText))
       );
 
       if (isEvBatteryReply) {
