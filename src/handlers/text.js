@@ -3,7 +3,9 @@ const { handleSummary, handleMonthlySummary } = require('./commands/summary');
 const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('./commands/settlement');
 const { handleExpenseLines, handleDeleteLastExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
-const { handleCreateTrip, handleListTrips, handleTripSummary } = require('./commands/trip');
+const { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleListPlaces } = require('./commands/trip');
+const { handleSetCarProfile, handleMapsLinkForEv, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
+const { evRouteState } = require('./state');
 const { clearAllState, slipConfirmState } = require('./state');
 
 const HELP_TEXT = [
@@ -32,12 +34,20 @@ const HELP_TEXT = [
   'บันทึกค่าใช้จ่ายใต้ทริป: ค่าโรงแรม 1200 #ชื่อทริป',
   'ดูรายการทริปทั้งหมด: ทริป',
   'สรุปค่าใช้จ่ายในทริป: สรุปทริป (ชื่อ)',
+  'เพิ่มสถานที่ในทริป: เพิ่มที่ (ชื่อสถานที่) #ชื่อทริป',
+  'ดูสถานที่ในทริป: ที่เที่ยว (ชื่อทริป)',
+  '',
+  '── EV ──',
+  'ตั้งค่าระยะรถ: ตั้งค่ารถ 400 กม.',
+  'หาจุดชาร์จ (แชร์ link): ส่ง Google Maps directions link แล้วบอกแบต %',
+  'หาจุดชาร์จ (ตำแหน่งปัจจุบัน): กด แชร์ตำแหน่ง แล้วบอกปลายทางและแบต %',
   '',
   'หมายเหตุ: รองรับผู้ใช้ได้สูงสุด 2 คนเท่านั้น',
 ].join('\n');
 
 async function handleTextMessage(text, userContext = {}) {
   const normalized = String(text || '').trim();
+  const lineUserId = userContext.lineUserId || 'unknown';
 
   if (!normalized) {
     return { type: 'noop', reply: 'ไม่มีข้อความให้ประมวลผล' };
@@ -147,7 +157,35 @@ async function handleTextMessage(text, userContext = {}) {
     return handleTripSummary(tripSummaryMatch[1].trim());
   }
 
-  if (slipConfirmState.pendingByUser[userContext.lineUserId || 'unknown']) {
+  const addPlaceMatch = normalized.match(/^เพิ่มที่\s*(.+)$/i);
+  if (addPlaceMatch) {
+    return handleAddPlace(addPlaceMatch[1].trim());
+  }
+
+  const listPlacesMatch = normalized.match(/^ที่เที่ยว\s*(.+)$/i);
+  if (listPlacesMatch) {
+    return handleListPlaces(listPlacesMatch[1].trim());
+  }
+
+  const setCarMatch = normalized.match(/^ตั้งค่ารถ\s*(.+)$/i);
+  if (setCarMatch) {
+    return handleSetCarProfile(setCarMatch[1].trim());
+  }
+
+  // Google Maps directions link → store pending EV route, ask for battery %
+  const mapsUrl = extractMapsUrl(normalized);
+  if (mapsUrl) {
+    const evResult = await handleMapsLinkForEv(mapsUrl, lineUserId);
+    if (evResult) return evResult;
+  }
+
+  // Battery % reply for pending EV route (link or location flow)
+  if (evRouteState.pendingByUser[lineUserId]) {
+    const evResult = await handleEvBatteryReply(normalized, lineUserId);
+    if (evResult) return evResult;
+  }
+
+  if (slipConfirmState.pendingByUser[lineUserId]) {
     const override = await handleSlipOverride(normalized, userContext);
     if (override) return override;
   }

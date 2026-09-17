@@ -7,6 +7,7 @@ const users = [];
 const deletedUsers = [];
 const expenses = [];
 const trips = [];
+const tripPlaces = [];
 const resetState = {
   pendingReset: false,
 };
@@ -39,6 +40,7 @@ async function resetData() {
   deletedUsers.length = 0;
   expenses.length = 0;
   trips.length = 0;
+  tripPlaces.length = 0;
   resetState.pendingReset = false;
 }
 
@@ -440,6 +442,74 @@ async function findTripByName(name) {
   return allTrips.find((t) => (t.name || '').toLowerCase() === lower) || null;
 }
 
+async function addTripPlace(tripId, name, notes = null) {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('trip_places')
+      .insert({ trip_id: tripId, name, notes })
+      .select();
+    if (error) throw error;
+    return data?.[0] || null;
+  }
+  const place = {
+    id: `place_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+    trip_id: tripId,
+    name,
+    notes,
+    createdAt: new Date().toISOString(),
+  };
+  tripPlaces.push(place);
+  return place;
+}
+
+async function getTripPlaces(tripId) {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('trip_places')
+      .select('*')
+      .eq('trip_id', tripId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+  return tripPlaces.filter((p) => p.trip_id === tripId);
+}
+
+async function getCarProfile() {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('car_profile')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    return data?.[0] || null;
+  }
+  return null;
+}
+
+async function setCarProfile(maxRangeKm) {
+  if (supabase) {
+    const existing = await getCarProfile();
+    if (existing) {
+      const { data, error } = await supabase
+        .from('car_profile')
+        .update({ max_range_km: maxRangeKm, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+        .select();
+      if (error) throw error;
+      return data?.[0] || null;
+    }
+    const { data, error } = await supabase
+      .from('car_profile')
+      .insert({ max_range_km: maxRangeKm })
+      .select();
+    if (error) throw error;
+    return data?.[0] || null;
+  }
+  return { max_range_km: maxRangeKm };
+}
+
 async function getExpensesByTrip(tripId) {
   if (supabase) {
     const { data, error } = await supabase
@@ -497,6 +567,10 @@ module.exports = {
   getTrips,
   findTripByName,
   getExpensesByTrip,
+  addTripPlace,
+  getTripPlaces,
+  getCarProfile,
+  setCarProfile,
   getDbStatus,
   terminateUserByName,
   restoreUserByName,

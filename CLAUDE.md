@@ -20,7 +20,7 @@ LINE Chatbot สำหรับคู่รัก ใช้บันทึกค
 | LINE SDK | @line/bot-sdk v9 |
 | AI / Vision | Claude API (claude-sonnet-4-6) |
 | Database | Supabase (PostgreSQL) |
-| Hosting | Railway (ยังไม่ได้ deploy) |
+| Hosting | Railway (deployed ✅) |
 | Local dev | ngrok |
 
 ---
@@ -42,7 +42,8 @@ expense-bot/
     │   └── text.js           ← parse คำสั่ง + คำนวณสรุปยอด
     ├── services/
     │   ├── claude.js         ← wrapper Claude API (vision)
-    │   └── db.js             ← Supabase queries ทั้งหมด
+    │   ├── db.js             ← Supabase queries ทั้งหมด
+    │   └── ocm.js            ← Open Charge Map API + Nominatim geocoding
     └── utils/
         └── parser.js         ← parse text → split mode
 ```
@@ -83,7 +84,23 @@ expense_splits (
   amount      decimal(10,2)
 )
 
--- archive หลังจาก clear รายเดือน (Sprint 2)
+-- สถานที่ในทริป (Sprint 2 — รัน migration_004 ก่อน deploy)
+trip_places (
+  id         uuid PK,
+  trip_id    uuid FK → trips ON DELETE CASCADE,
+  name       text NOT NULL,
+  notes      text (nullable),
+  created_at timestamptz
+)
+
+-- โปรไฟล์รถ EV (Sprint 2 — รัน migration_004 ก่อน deploy)
+car_profile (
+  id            uuid PK,
+  max_range_km  int,
+  updated_at    timestamptz
+)
+
+-- archive รายเดือน (Sprint 5 — ยังไม่ได้สร้าง table)
 monthly_summaries (
   id          uuid PK,
   user_id     uuid FK → users,
@@ -93,14 +110,13 @@ monthly_summaries (
   cleared_at  timestamptz
 )
 
--- ทริปท่องเที่ยว (Sprint 2)
+-- ทริปท่องเที่ยว
 trips (
-  id          uuid PK,
-  name        text,
-  destination text,
-  start_date  date,
-  end_date    date,
-  created_at  timestamptz
+  id                  uuid PK,
+  name                text,
+  default_split_mode  text default 'half',
+  default_num_people  int (nullable),
+  created_at          timestamptz
 )
 ```
 
@@ -127,36 +143,53 @@ trips (
 
 ## Backlog
 
-### Sprint 1 — MVP (ทำอยู่)
+### Sprint 1 — MVP ✅ เสร็จแล้ว
 
 | # | Item | Status |
 |---|---|---|
-| 1 | ส่งรูป slip → อ่านยอดด้วย Claude Vision → บันทึก half อัตโนมัติ | 🔄 in progress |
-| 2 | พิมพ์บันทึกค่าใช้จ่าย + parse split mode ทุกแบบ | 🔄 in progress |
-| 3 | สรุปยอดและคำนวณส่วนแบ่งตาม split mode | 🔄 in progress |
+| 1 | ส่งรูป slip → อ่านยอดด้วย Claude Vision → บันทึก half อัตโนมัติ | ✅ done |
+| 2 | พิมพ์บันทึกค่าใช้จ่าย + parse split mode ทุกแบบ | ✅ done |
+| 3 | สรุปยอดและคำนวณส่วนแบ่งตาม split mode | ✅ done |
 
-**Definition of Done Sprint 1:**
-- [ ] ส่ง slip แล้ว bot ตอบยอดถูกต้อง ≥ 90%
-- [ ] ทั้งคู่บันทึกค่าใช้จ่ายจาก LINE ได้โดยไม่ต้องอ่านคู่มือ
-- [ ] สรุปยอดหารสองถูกต้องทุกครั้ง
-- [ ] deploy ขึ้น server ทั้งคู่ใช้ได้จริงจาก LINE
+**เพิ่มเติมจาก Sprint 1 (done):**
+- ✅ Settlement flow — จ่ายแล้ว / รับแล้ว + debtor guard
+- ✅ Trip system — สร้างทริป, default split mode, #tag, สรุปทริป + เรียกเก็บเงิน
+- ✅ Multi-line batch expense + shared #tag propagation
+- ✅ Slip override — หาร N, ฉัน X แฟน Y, ไม่หาร
+- ✅ User management — ลงทะเบียน, เปลี่ยนชื่อ, ผู้ใช้, ป้องกันชื่อซ้ำ
+- ✅ Deploy บน Railway
 
-### Sprint 2 — Next (ยังไม่เริ่ม)
+**รัน SQL migrations ใน Supabase ก่อน deploy ครั้งต่อไป:**
+- `supabase/migration_001_add_soft_delete.sql`
+- `supabase/migration_002_add_trip_id_to_expenses.sql`
+- `supabase/migration_003_trip_default_split.sql`
+- `supabase/migration_004_trip_places_car_profile.sql` ← Sprint 2
 
-- เคลียร์ยอดรายเดือน (manual clear → `is_cleared = true`)
-- แยกหมวดค่าใช้จ่าย
-- สร้าง itinerary ด้วย AI
-- บันทึกและแชร์ itinerary
-- ประมาณงบทริปหารสอง
-- สรุปรายสัปดาห์อัตโนมัติ
+### Sprint 2 — Trip Assistant ✅ เสร็จแล้ว
 
-### Sprint 3 — Nice to have (ยังไม่เริ่ม)
+- **Trip notebook** — บันทึกสถานที่ที่อยากไปต่อท้าย trip
+- **EV charging route** — บอก A → B + % แบตที่เหลือ → แนะนำจุดชาร์จระหว่างทาง (เรียงตามจำนวนตู้, มี Google Maps link, ร้านอาหารใกล้เคียง) คำนวณให้เหลือ ≥ 20% เสมอ ใช้ Open Charge Map API + Anthropic web_search
 
-- แจ้งเตือนวันพิเศษ + ไอเดียของขวัญ
-- บิลรายเดือนร่วมกัน
-- สุ่มร้านอาหาร
-- To-Do ร่วมกัน
-- ฟีเจอร์ความสัมพันธ์
+### Sprint 3 — Reminders & To-Do (ยังไม่เริ่ม)
+
+- **แจ้งเตือนวันพิเศษ** — บันทึก event (วันเกิด, ครบรอบ ฯลฯ) + reminder ล่วงหน้า + Claude generate ข้อความน่ารักวันนั้น
+- **To-Do ร่วมกัน** — shared task list + due date + push reminder
+
+### Sprint 4 — Discovery & Gifts (ยังไม่เริ่ม)
+
+- **สุ่มร้านอาหาร** — paste Google Maps link → bot ดึงข้อมูลเอง → สุ่มเลือก
+- **ของขวัญ** — wishlist ของแต่ละคน + gift history ป้องกันซ้ำ + bot hint ให้อีกฝ่ายตอนใกล้วันพิเศษ
+
+### Sprint 5 — Data & Automation (ยังไม่เริ่ม)
+
+- **แยกหมวดค่าใช้จ่าย** — AI auto-classify อัตโนมัติ (rule-based keyword → Claude fallback) ไม่ต้องพิมพ์เพิ่ม
+- **สรุปรายเดือนแยกหมวด** — ดูยอดแต่ละหมวด + ตั้งงบ + แจ้งเตือนใกล้เกิน
+- **Reminder ค้างชำระ** — push แจ้งเตือนอัตโนมัติถ้าไม่จ่ายภายใน 3 วัน / 7 วัน หลังเรียกเก็บ (ต้องย้าย settlement state ลง DB + cron)
+
+### Sprint 6 — Nice to have (ยังไม่เริ่ม)
+
+- **ฟีเจอร์ความสัมพันธ์** — จำรายละเอียดของแฟน (เช่น ไม่ทานถั่วงอก), แนะนำกิจกรรม, สถานที่ที่แฟนอยากไป, ดูดวง
+- **บิลรายเดือนร่วมกัน**
 
 ---
 
@@ -208,4 +241,4 @@ https://xxxx.ngrok-free.app/webhook
 - `is_cleared` flag ใช้ manual clear ก่อน (Sprint 1) ระบบ confirm อัตโนมัติทำใน Sprint 2
 - slip ที่ส่งมาโดยไม่มีข้อความเพิ่ม → default `split_mode = half` เสมอ
 - ถ้าพิมพ์ text เพิ่มพร้อม slip → ส่งให้ parser.js จัดการเหมือน text ปกติ
-- ยังไม่ทำระบบ settlement (จ่ายแล้ว/ยังไม่จ่าย) ใน Sprint 1
+- ระบบ settlement (จ่ายแล้ว/รับแล้ว) ทำเสร็จแล้วใน Sprint 1

@@ -1,4 +1,4 @@
-const { createTrip, getTrips, getExpensesByTrip, findTripByName, getUsers } = require('../../services/db');
+const { createTrip, getTrips, getExpensesByTrip, findTripByName, getUsers, addTripPlace, getTripPlaces } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
 const { parseTripCreation, formatSplitMode } = require('../../utils/parser');
 const { buildSettlementNotification } = require('./settlement');
@@ -76,4 +76,40 @@ async function handleTripSummary(name) {
   return { type: 'trip_summary', reply: lines.join('\n') + prompt, notification };
 }
 
-module.exports = { handleCreateTrip, handleListTrips, handleTripSummary };
+async function handleAddPlace(input) {
+  const tagMatch = input.match(/#([฀-๿a-zA-Z0-9_]+)/);
+  if (!tagMatch) {
+    return { type: 'error', reply: 'ระบุทริปด้วย #ชื่อทริป เช่น เพิ่มที่ ร้านต้มยำ #หัวหิน' };
+  }
+
+  const tripName = tagMatch[1];
+  const name = input.replace(/#[฀-๿a-zA-Z0-9_]+/, '').trim();
+  if (!name) {
+    return { type: 'error', reply: 'ระบุชื่อสถานที่ด้วย เช่น เพิ่มที่ ร้านต้มยำ #หัวหิน' };
+  }
+
+  const trip = await findTripByName(tripName);
+  if (!trip) {
+    return { type: 'error', reply: `ไม่พบทริป "#${tripName}" สร้างก่อนด้วย: สร้างทริป ${tripName}` };
+  }
+
+  await addTripPlace(trip.id, name);
+  return { type: 'place_added', reply: `เพิ่ม "${name}" ในทริป ${trip.name} แล้ว` };
+}
+
+async function handleListPlaces(tripName) {
+  const trip = await findTripByName(tripName);
+  if (!trip) {
+    return { type: 'error', reply: `ไม่พบทริป "${tripName}"` };
+  }
+
+  const places = await getTripPlaces(trip.id);
+  if (!places.length) {
+    return { type: 'trip_places', reply: `ทริป "${trip.name}" ยังไม่มีสถานที่ เพิ่มด้วย: เพิ่มที่ [ชื่อ] #${trip.name}` };
+  }
+
+  const lines = places.map((p, i) => `${i + 1}. ${p.name}`);
+  return { type: 'trip_places', reply: `สถานที่ในทริป "${trip.name}":\n${lines.join('\n')}` };
+}
+
+module.exports = { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleListPlaces };

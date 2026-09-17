@@ -5,6 +5,7 @@ const { handleTextMessage } = require('./handlers/text');
 const { getUsers, getExpenses, getDbStatus } = require('./services/db');
 const { analyzeSlip } = require('./services/claude');
 const { slipConfirmState } = require('./handlers/state');
+const { handleLocationForEv } = require('./handlers/commands/ev');
 
 dotenv.config();
 
@@ -134,6 +135,13 @@ app.post('/webhook', async (req, res) => {
         const pushText = `${result.notification.debtorName} แจ้งว่าโอนเงิน ${result.notification.amount.toFixed(2)} บาท แล้ว — พิมพ์ รับแล้ว เพื่อยืนยันและเคลียร์ยอด`;
         await sendPushMessage(result.notification.creditorLineUserId, pushText);
       }
+    }
+
+    if (event.type === 'message' && event.message?.type === 'location') {
+      const lineUserId = event.source?.userId || 'unknown';
+      const { latitude, longitude, address } = event.message;
+      const result = handleLocationForEv(latitude, longitude, address, lineUserId);
+      await sendReplyMessage(event, result.reply);
     }
 
     if (event.type === 'follow') {
