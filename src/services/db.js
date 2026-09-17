@@ -8,6 +8,7 @@ const deletedUsers = [];
 const expenses = [];
 const trips = [];
 const tripPlaces = [];
+let carProfile = null;
 const resetState = {
   pendingReset: false,
 };
@@ -41,6 +42,7 @@ async function resetData() {
   expenses.length = 0;
   trips.length = 0;
   tripPlaces.length = 0;
+  carProfile = null;
   resetState.pendingReset = false;
 }
 
@@ -485,7 +487,7 @@ async function getCarProfile() {
     if (error) throw error;
     return data?.[0] || null;
   }
-  return null;
+  return carProfile;
 }
 
 async function setCarProfile(maxRangeKm) {
@@ -507,7 +509,8 @@ async function setCarProfile(maxRangeKm) {
     if (error) throw error;
     return data?.[0] || null;
   }
-  return { max_range_km: maxRangeKm };
+  carProfile = { max_range_km: maxRangeKm };
+  return carProfile;
 }
 
 async function getExpensesByTrip(tripId) {
