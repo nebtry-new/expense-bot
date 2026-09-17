@@ -9,7 +9,7 @@ async function parseMapsUrl(url) {
   // Follow redirect for shortened links (maps.app.goo.gl, goo.gl/maps)
   if (/maps\.app\.goo\.gl|goo\.gl\/maps/.test(url)) {
     try {
-      const res = await fetch(url, { method: 'HEAD', redirect: 'follow' });
+      const res = await fetch(url, { redirect: 'follow' });
       fullUrl = res.url;
     } catch {
       return null;
@@ -27,10 +27,11 @@ async function parseMapsUrl(url) {
   }
 
   // https://www.google.com/maps/dir/?api=1&origin=...&destination=...
+  // https://maps.google.com/maps?saddr=...&daddr=... (shortened link redirect format)
   try {
     const u = new URL(fullUrl);
-    const origin = u.searchParams.get('origin');
-    const destination = u.searchParams.get('destination');
+    const origin = u.searchParams.get('origin') || u.searchParams.get('saddr');
+    const destination = u.searchParams.get('destination') || u.searchParams.get('daddr');
     if (origin && destination) return { origin, destination };
   } catch {
     // ignore
@@ -58,7 +59,10 @@ async function handleSetCarProfile(input) {
 async function handleMapsLinkForEv(url, lineUserId) {
   const parsed = await parseMapsUrl(url);
   if (!parsed) {
-    return null; // ไม่ใช่ directions link ปล่อยผ่าน
+    return {
+      type: 'error',
+      reply: 'กรุณาแชร์ link เส้นทาง (Directions) ไม่ใช่ link สถานที่\nวิธีแชร์: เปิด Google Maps → กด เส้นทาง → แชร์ link',
+    };
   }
 
   evRouteState.pendingByUser[lineUserId] = {
