@@ -6,6 +6,7 @@ const { getUsers, getExpenses, getDbStatus } = require('./services/db');
 const { analyzeSlip } = require('./services/claude');
 const { slipConfirmState } = require('./handlers/state');
 const { handleLocationForEv } = require('./handlers/commands/ev');
+const { evRouteState } = require('./handlers/state');
 
 dotenv.config();
 
@@ -114,26 +115,35 @@ app.post('/webhook', async (req, res) => {
   for (const event of events) {
     if (event.type === 'message' && event.message?.type === 'text') {
       const messageText = event.message.text;
-      const userContext = {
-        lineUserId: event.source?.userId || 'unknown',
-      };
+      const lineUserId = event.source?.userId || 'unknown';
+      const userContext = { lineUserId };
 
-      const result = await handleTextMessage(messageText, userContext);
-      replies.push({
-        type: 'text',
-        text: result.reply,
-      });
+      // Detect EV battery reply that will trigger a slow web_search
+      const evPending = evRouteState.pendingByUser[lineUserId];
+      const isEvBatteryReply = evPending && (
+        /^\d+%?$/.test(messageText.trim()) ||
+        (evPending.type === 'location' && /\d+/.test(messageText))
+      );
 
-      await sendReplyMessage(event, result.reply);
+      if (isEvBatteryReply) {
+        // Reply immediately so user knows bot is working, then push result
+        await sendReplyMessage(event, 'กำลังค้นหาจุดชาร์จ EV...');
+        const result = await handleTextMessage(messageText, userContext);
+        await sendPushMessage(lineUserId, result.reply);
+      } else {
+        const result = await handleTextMessage(messageText, userContext);
+        replies.push({ type: 'text', text: result.reply });
+        await sendReplyMessage(event, result.reply);
 
-      if (result.type === 'settlement_trigger' && result.notification?.debtorLineUserId) {
-        const settlementText = `สรุปยอด: ${result.notification.debtorName} ต้องจ่าย ${result.notification.amount.toFixed(2)} บาท ให้ ${result.notification.creditorName}`;
-        await sendPushMessage(result.notification.debtorLineUserId, settlementText);
-      }
+        if (result.type === 'settlement_trigger' && result.notification?.debtorLineUserId) {
+          const settlementText = `สรุปยอด: ${result.notification.debtorName} ต้องจ่าย ${result.notification.amount.toFixed(2)} บาท ให้ ${result.notification.creditorName}`;
+          await sendPushMessage(result.notification.debtorLineUserId, settlementText);
+        }
 
-      if (result.type === 'payment_sent' && result.notification?.creditorLineUserId) {
-        const pushText = `${result.notification.debtorName} แจ้งว่าโอนเงิน ${result.notification.amount.toFixed(2)} บาท แล้ว — พิมพ์ รับแล้ว เพื่อยืนยันและเคลียร์ยอด`;
-        await sendPushMessage(result.notification.creditorLineUserId, pushText);
+        if (result.type === 'payment_sent' && result.notification?.creditorLineUserId) {
+          const pushText = `${result.notification.debtorName} แจ้งว่าโอนเงิน ${result.notification.amount.toFixed(2)} บาท แล้ว — พิมพ์ รับแล้ว เพื่อยืนยันและเคลียร์ยอด`;
+          await sendPushMessage(result.notification.creditorLineUserId, pushText);
+        }
       }
     }
 
