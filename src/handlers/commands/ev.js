@@ -28,11 +28,16 @@ async function parseMapsUrl(url) {
 
   // https://www.google.com/maps/dir/?api=1&origin=...&destination=...
   // https://maps.google.com/maps?saddr=...&daddr=... (shortened link redirect format)
+  // https://www.google.com/maps?q=... (place link — destination only, no origin)
   try {
     const u = new URL(fullUrl);
     const origin = u.searchParams.get('origin') || u.searchParams.get('saddr');
     const destination = u.searchParams.get('destination') || u.searchParams.get('daddr');
     if (origin && destination) return { origin, destination };
+
+    // Place link: q= param — destination only
+    const q = u.searchParams.get('q');
+    if (q) return { origin: null, destination: decodeURIComponent(q.replace(/\+/g, ' ')).trim() };
   } catch {
     // ignore
   }
@@ -58,7 +63,7 @@ async function handleSetCarProfile(input) {
 // Called when user sends a Google Maps directions link
 async function handleMapsLinkForEv(url, lineUserId) {
   const parsed = await parseMapsUrl(url);
-  if (!parsed) {
+  if (!parsed || !parsed.origin) {
     return {
       type: 'error',
       reply: 'กรุณาแชร์ link เส้นทาง (Directions) ไม่ใช่ link สถานที่\nวิธีแชร์: เปิด Google Maps → กด เส้นทาง → แชร์ link',
