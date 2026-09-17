@@ -102,6 +102,19 @@ async function handleMapsDestinationForLocation(url, lineUserId) {
 
 // Called when user sends a LINE location event
 function handleLocationForEv(lat, lng, address, lineUserId) {
+  const pending = evRouteState.pendingByUser[lineUserId];
+
+  // If already waiting for destination, treat this location as destination
+  if (pending?.type === 'location' && !pending.destination) {
+    const destination = address ? `${address} (${lat},${lng})` : `${lat},${lng}`;
+    pending.destination = destination;
+    return {
+      type: 'ev_awaiting_battery',
+      reply: `ปลายทาง: ${address || `${lat},${lng}`}\nแบตเหลือกี่ % ครับ? (เช่น 80%)`,
+    };
+  }
+
+  // Otherwise treat as origin
   const origin = address ? `${address} (${lat},${lng})` : `${lat},${lng}`;
   evRouteState.pendingByUser[lineUserId] = {
     type: 'location',
@@ -111,7 +124,7 @@ function handleLocationForEv(lat, lng, address, lineUserId) {
 
   return {
     type: 'ev_awaiting_destination',
-    reply: `บันทึกตำแหน่งปัจจุบันแล้ว\nจะไปที่ไหน และแบตเหลือกี่ %?\nเช่น หัวหิน 80%`,
+    reply: `บันทึกตำแหน่งปัจจุบันแล้ว\nจะไปที่ไหน?\nส่งตำแหน่ง, Maps link หรือพิมพ์ชื่อ + แบต% เช่น หัวหิน 80%`,
   };
 }
 
