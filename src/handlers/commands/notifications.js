@@ -3,7 +3,8 @@ const { parseNotificationInput, toLocalDisplay } = require('../../utils/parse-da
 
 async function handleScheduleNotification(input, lineUserId) {
   const BROADCAST_KW = /\s+ทั้งคู่$/;
-  const broadcast = BROADCAST_KW.test(input);
+  const HAS_TRIP_TAG = /#[฀-๿a-zA-Z0-9_]+/.test(input);
+  const broadcast = HAS_TRIP_TAG || BROADCAST_KW.test(input);
   const cleanInput = input.replace(BROADCAST_KW, '').trim();
 
   const parsed = parseNotificationInput(cleanInput);
