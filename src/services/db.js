@@ -467,6 +467,26 @@ async function addTripPlace(tripId, name, notes = null, category = 'other', maps
   return place;
 }
 
+async function deleteTripPlace(tripId, placeName) {
+  const lower = placeName.toLowerCase();
+  if (supabase) {
+    const { data: places, error: findErr } = await supabase
+      .from('trip_places')
+      .select('id, name')
+      .eq('trip_id', tripId);
+    if (findErr) throw findErr;
+    const match = places?.find((p) => p.name.toLowerCase().includes(lower));
+    if (!match) return null;
+    const { error } = await supabase.from('trip_places').delete().eq('id', match.id);
+    if (error) throw error;
+    return match;
+  }
+  const idx = tripPlaces.findIndex((p) => p.trip_id === tripId && p.name.toLowerCase().includes(lower));
+  if (idx === -1) return null;
+  const [removed] = tripPlaces.splice(idx, 1);
+  return removed;
+}
+
 async function markTripPlaceVisited(tripId, placeName) {
   const lower = placeName.toLowerCase();
   if (supabase) {
@@ -629,6 +649,7 @@ module.exports = {
   getExpensesByTrip,
   addTripPlace,
   getTripPlaces,
+  deleteTripPlace,
   markTripPlaceVisited,
   addTripNote,
   getTripNotes,

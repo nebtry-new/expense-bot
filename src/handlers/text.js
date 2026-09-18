@@ -3,7 +3,7 @@ const { handleSummary, handleMonthlySummary } = require('./commands/summary');
 const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('./commands/settlement');
 const { handleExpenseLines, handleDeleteLastExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
-const { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
+const { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
 const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
 const { clearAllState, slipConfirmState } = require('./state');
@@ -37,6 +37,7 @@ const HELP_TEXT = [
   '',
   'เพิ่มสถานที่: เพิ่มที่ (ชื่อ) [กิน/เที่ยว/ที่พัก/ช้อป] [url] #ทริป',
   'เพิ่มพร้อม note: เพิ่มที่ (ชื่อ) | (note) กิน #ทริป',
+  'ลบสถานที่: ลบที่ (ชื่อสถานที่) #ทริป',
   'บันทึกว่าไปแล้ว: ไปแล้ว (ชื่อสถานที่) #ทริป',
   'ดูสถานที่: ที่เที่ยว (ชื่อทริป)',
   'ดูเส้นทางทุกจุด: เส้นทางทริป (ชื่อทริป)',
@@ -167,6 +168,11 @@ async function handleTextMessage(text, userContext = {}) {
   const addPlaceMatch = normalized.match(/^เพิ่มที่\s*(.+)$/i);
   if (addPlaceMatch) {
     return handleAddPlace(addPlaceMatch[1].trim());
+  }
+
+  const deletePlaceMatch = normalized.match(/^ลบที่\s*(.+)$/i);
+  if (deletePlaceMatch) {
+    return handleDeletePlace(deletePlaceMatch[1].trim());
   }
 
   const visitedMatch = normalized.match(/^(?:ไปแล้ว|✓)\s+(.+)$/i);

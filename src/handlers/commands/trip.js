@@ -1,4 +1,4 @@
-const { createTrip, getTrips, getExpensesByTrip, findTripByName, getUsers, addTripPlace, getTripPlaces, markTripPlaceVisited, addTripNote, getTripNotes } = require('../../services/db');
+const { createTrip, getTrips, getExpensesByTrip, findTripByName, getUsers, addTripPlace, getTripPlaces, deleteTripPlace, markTripPlaceVisited, addTripNote, getTripNotes } = require('../../services/db');
 const { fetchPageTitle } = require('../../utils/fetch-title');
 const { calculateBalances } = require('../../utils/balance');
 const { parseTripCreation, formatSplitMode } = require('../../utils/parser');
@@ -157,6 +157,24 @@ async function handleAddPlace(input) {
   return { type: 'place_added', reply: lines.join('\n') };
 }
 
+async function handleDeletePlace(input) {
+  const tagMatch = input.match(/#([฀-๿a-zA-Z0-9_]+)/);
+  if (!tagMatch) {
+    return { type: 'error', reply: 'ระบุทริปด้วย #ชื่อทริป เช่น ลบที่ ร้านต้มยำ #หัวหิน' };
+  }
+  const tripName = tagMatch[1];
+  const placeName = input.replace(/#[฀-๿a-zA-Z0-9_]+/, '').trim();
+  if (!placeName) return { type: 'error', reply: 'ระบุชื่อสถานที่ด้วย' };
+
+  const trip = await findTripByName(tripName);
+  if (!trip) return { type: 'error', reply: `ไม่พบทริป "${tripName}"` };
+
+  const place = await deleteTripPlace(trip.id, placeName);
+  if (!place) return { type: 'error', reply: `ไม่พบ "${placeName}" ในทริป ${trip.name}` };
+
+  return { type: 'place_deleted', reply: `ลบ "${place.name}" ออกจากทริป ${trip.name} แล้ว` };
+}
+
 async function handleMarkVisited(input) {
   const tagMatch = input.match(/#([฀-๿a-zA-Z0-9_]+)/);
   if (!tagMatch) {
@@ -273,4 +291,4 @@ async function handleListNotes(tripName) {
   return { type: 'trip_notes', reply: lines.join('\n') };
 }
 
-module.exports = { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes };
+module.exports = { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes };
