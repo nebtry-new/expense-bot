@@ -9,12 +9,21 @@ function haversineKm(a, b) {
   return R * 2 * Math.asin(Math.sqrt(h));
 }
 
+// Perpendicular distance from point to line segment A→B (km)
+function distToSegmentKm(point, a, b) {
+  const dx = b.lat - a.lat;
+  const dy = b.lng - a.lng;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return haversineKm(point, a);
+  const t = Math.max(0, Math.min(1, ((point.lat - a.lat) * dx + (point.lng - a.lng) * dy) / len2));
+  return haversineKm(point, { lat: a.lat + t * dx, lng: a.lng + t * dy });
+}
+
 function interpolate(a, b, t) {
   return { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
 }
 
 async function geocodeText(text) {
-  // Extract embedded coords: "name (lat,lng)" or "lat,lng"
   const m = text.match(/\(?\s*(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*\)?/);
   if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
 
@@ -30,7 +39,6 @@ async function geocodeText(text) {
 }
 
 async function placesNearby(lat, lng, radiusM) {
-  // New Places API (v1) — better Thailand EV station coverage than old nearbysearch
   const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
     method: 'POST',
     headers: {
@@ -54,6 +62,34 @@ async function placesNearby(lat, lng, radiusM) {
   return data.places || [];
 }
 
+// Greedy multi-hop: find minimum charging stops from origin to destination
+function planChargingStops(stations, originCoord, destCoord, reachableKm, maxRangeKm) {
+  const stops = [];
+  let pos = originCoord;
+  let range = reachableKm;
+  const used = new Set();
+
+  while (haversineKm(pos, destCoord) > range && stops.length < 5) {
+    const reachable = stations.filter((s) => !used.has(s.placeId) && haversineKm(pos, s) <= range);
+    if (!reachable.length) break;
+
+    // Prefer >50% of current range (worth stopping), sort by rating then furthest first
+    const half = range * 0.5;
+    const preferred = reachable.filter((s) => haversineKm(pos, s) >= half);
+    const pool = preferred.length ? preferred : reachable;
+    pool.sort((a, b) => b.rating - a.rating || haversineKm(pos, b) - haversineKm(pos, a));
+
+    const best = pool[0];
+    used.add(best.placeId);
+    stops.push(best);
+    pos = { lat: best.lat, lng: best.lng };
+    range = maxRangeKm; // full charge after stop
+  }
+
+  const canReachDest = haversineKm(pos, destCoord) <= range;
+  return { stops, canReachDest };
+}
+
 async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
   if (!apiKey) return { error: 'ไม่ได้ตั้งค่า GOOGLE_PLACES_API_KEY' };
 
@@ -66,66 +102,64 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
 
   const reachableKm = (batteryPct / 100) * maxRangeKm;
   const routeKm = haversineKm(originCoord, destCoord);
-  // Minimum 15km radius so short routes still get results
   const radiusM = Math.min(50000, Math.max(15000, Math.round(routeKm * 1000 * 0.25)));
 
-  console.log('EV search:', { originCoord, destCoord, routeKm: routeKm.toFixed(1), radiusM, reachableKm: reachableKm.toFixed(1) });
+  console.log('EV search:', { routeKm: routeKm.toFixed(1), radiusM, reachableKm: reachableKm.toFixed(1) });
 
-  // Search at 25%, 50%, 75% along the straight-line route
   const midpoints = [0.25, 0.5, 0.75].map((t) => interpolate(originCoord, destCoord, t));
   const batches = await Promise.all(midpoints.map((p) => placesNearby(p.lat, p.lng, radiusM)));
 
-  console.log('EV search results per midpoint:', batches.map((b) => b.length));
+  console.log('EV results per midpoint:', batches.map((b) => b.length));
 
-  // Deduplicate by id, compute straight-line distance from origin
+  // Build unique station list — apply corridor + rating filters
+  const CORRIDOR_KM = 15;
+  const MIN_RATING = 3.0;
   const seen = new Set();
   const stations = [];
+
   for (const batch of batches) {
     for (const place of batch) {
-      const id = place.id || place.place_id;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      // New API: place.location = { latitude, longitude }; Old API: place.geometry.location = { lat, lng }
+      const placeId = place.id || place.place_id;
+      if (seen.has(placeId)) continue;
+      seen.add(placeId);
+
       const loc = place.location
         ? { lat: place.location.latitude, lng: place.location.longitude }
         : place.geometry?.location;
       if (!loc) continue;
-      const distKm = Math.round(haversineKm(originCoord, loc));
-      const name = place.displayName?.text || place.name || '';
-      const address = place.shortFormattedAddress || '';
+
+      // Corridor filter: skip stations too far off the A→B straight line
+      if (distToSegmentKm(loc, originCoord, destCoord) > CORRIDOR_KM) continue;
+
+      // Rating filter: skip low-rated (allow unrated stations)
+      const rating = place.rating || 0;
+      if (rating > 0 && rating < MIN_RATING) continue;
+
       stations.push({
-        name,
-        address,
-        distKm,
+        placeId,
+        name: place.displayName?.text || place.name || '',
+        address: place.shortFormattedAddress || '',
+        distKm: Math.round(haversineKm(originCoord, loc)),
         lat: loc.lat,
         lng: loc.lng,
-        rating: place.rating || 0,
+        rating,
       });
     }
   }
 
-  console.log('EV stations before range filter:', stations.length, '| reachableKm:', reachableKm.toFixed(1));
+  console.log('EV stations after filters:', stations.length);
 
-  const inRange = stations.filter((s) => s.distKm <= reachableKm);
+  if (!stations.length) return { error: 'ไม่พบจุดชาร์จ EV บนเส้นทางนี้' };
 
-  if (!inRange.length) {
-    return stations.length
-      ? { error: `พบ ${stations.length} สถานี แต่อยู่เกินระยะแบต (~${Math.round(reachableKm)} กม.) กรุณาชาร์จก่อนออกเดินทาง` }
-      : { error: 'ไม่พบจุดชาร์จ EV บนเส้นทางนี้' };
+  const { stops, canReachDest } = planChargingStops(
+    stations, originCoord, destCoord, reachableKm, maxRangeKm,
+  );
+
+  if (!stops.length) {
+    return { error: `ไม่พบจุดชาร์จที่วิ่งถึงได้จากต้นทาง (แบตวิ่งได้ ~${Math.round(reachableKm)} กม.)` };
   }
 
-  // Select: prefer stations where battery has dropped >50% (worth stopping)
-  const halfKm = reachableKm * 0.5;
-  const preferred = inRange.filter((s) => s.distKm >= halfKm);
-  const early = inRange.filter((s) => s.distKm < halfKm);
-
-  const byRating = (a, b) => b.rating - a.rating || a.distKm - b.distKm;
-  const top5 = [...preferred.sort(byRating), ...early.sort(byRating)].slice(0, 5);
-
-  // Display order: ascending distance (A→B route order)
-  top5.sort((a, b) => a.distKm - b.distKm);
-
-  return { stations: top5, originCoord, destCoord };
+  return { stations: stops, originCoord, destCoord, canReachDest };
 }
 
 module.exports = { searchEvStations };
