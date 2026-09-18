@@ -10,23 +10,34 @@ async function analyzeSlip(imageBase64, mediaType = 'image/jpeg') {
     return { amount: 0, description: '' };
   }
 
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 256,
-    messages: [{
-      role: 'user',
-      content: [
-        {
-          type: 'image',
-          source: { type: 'base64', media_type: mediaType, data: imageBase64 },
-        },
-        {
-          type: 'text',
-          text: 'นี่คือหน้าจอ slip โอนเงิน อ่านยอดที่โอนและชื่อผู้รับหรือรายละเอียด ตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่น รูปแบบ: {"amount": <ยอดโอนเป็นตัวเลข>, "description": "<ชื่อผู้รับหรือรายละเอียด>"} ถ้าไม่ใช่ slip หรือไม่พบยอด ให้ amount เป็น 0',
-        },
-      ],
-    }],
-  });
+  let message;
+  try {
+    message = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 256,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: mediaType, data: imageBase64 },
+          },
+          {
+            type: 'text',
+            text: 'นี่คือหน้าจอ slip โอนเงิน อ่านยอดที่โอนและชื่อผู้รับหรือรายละเอียด ตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่น รูปแบบ: {"amount": <ยอดโอนเป็นตัวเลข>, "description": "<ชื่อผู้รับหรือรายละเอียด>"} ถ้าไม่ใช่ slip หรือไม่พบยอด ให้ amount เป็น 0',
+          },
+        ],
+      }],
+    });
+  } catch (err) {
+    const body = err?.error?.error || err?.error || {};
+    if (body.type === 'invalid_request_error' && String(body.message).includes('credit balance')) {
+      console.error('Anthropic credit exhausted');
+      return { amount: 0, description: 'เครดิต API หมด' };
+    }
+    console.error('analyzeSlip API error:', err?.message || err);
+    return { amount: 0, description: '' };
+  }
 
   const text = message.content[0]?.text?.trim() || '';
   try {
@@ -74,26 +85,36 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
 - หาให้ครบที่สุดเท่าที่จะหาได้`,
   }];
 
-  let response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
-    tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-    messages,
-  });
-
-  // Handle tool_use loop (Anthropic executes web_search server-side)
-  while (response.stop_reason === 'tool_use') {
-    messages.push({ role: 'assistant', content: response.content });
-    const toolResults = response.content
-      .filter((b) => b.type === 'tool_use')
-      .map((b) => ({ type: 'tool_result', tool_use_id: b.id, content: '' }));
-    messages.push({ role: 'user', content: toolResults });
+  let response;
+  try {
     response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 2048,
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages,
     });
+
+    // Handle tool_use loop (Anthropic executes web_search server-side)
+    while (response.stop_reason === 'tool_use') {
+      messages.push({ role: 'assistant', content: response.content });
+      const toolResults = response.content
+        .filter((b) => b.type === 'tool_use')
+        .map((b) => ({ type: 'tool_result', tool_use_id: b.id, content: '' }));
+      messages.push({ role: 'user', content: toolResults });
+      response = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2048,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages,
+      });
+    }
+  } catch (err) {
+    const body = err?.error?.error || err?.error || {};
+    if (body.type === 'invalid_request_error' && String(body.message).includes('credit balance')) {
+      return 'เครดิต Anthropic API หมดแล้ว กรุณาเติมเครดิตที่ console.anthropic.com';
+    }
+    console.error('searchEvStations API error:', err?.message || err);
+    return 'ค้นหาจุดชาร์จไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
   }
 
   const raw = response.content.find((b) => b.type === 'text')?.text || '';
