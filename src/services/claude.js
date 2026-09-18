@@ -64,7 +64,7 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
     content: `ค้นหาจุดชาร์จ EV ทุกสถานีบนเส้นทาง "${originText}" → "${destText}" ในระยะ ${reachableKm} กม.
 ค้นหา EA Anywhere, PEA Volta, PTT EV และเครือข่ายอื่นๆ
 
-ตอบเป็น JSON array เท่านั้น ห้ามมีข้อความอื่นนอกจาก JSON:
+ตอบเป็น JSON array เริ่มต้นด้วย [ ทันที ห้ามมีข้อความนำหน้า คำอธิบาย หรือ disclaimer ใดๆ:
 [{"name":"ชื่อสถานีสั้นๆ","provider":"EA","numChargers":8,"distanceKm":65,"mapsLink":"https://maps.google.com/maps?q=ชื่อสถานี"}]
 
 - name: ชื่อสถานีสั้นๆ ไม่เกิน 30 ตัวอักษร ไม่ต้องใส่ที่อยู่
