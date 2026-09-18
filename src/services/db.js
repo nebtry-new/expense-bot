@@ -500,6 +500,40 @@ async function getTripPlaces(tripId) {
   return tripPlaces.filter((p) => p.trip_id === tripId);
 }
 
+async function addTripNote(tripId, content) {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('trip_notes')
+      .insert({ trip_id: tripId, content })
+      .select();
+    if (error) throw error;
+    return data?.[0] || null;
+  }
+  const note = {
+    id: `note_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+    trip_id: tripId,
+    content,
+    createdAt: new Date().toISOString(),
+  };
+  // store in-memory alongside tripPlaces
+  if (!global._tripNotes) global._tripNotes = [];
+  global._tripNotes.push(note);
+  return note;
+}
+
+async function getTripNotes(tripId) {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('trip_notes')
+      .select('*')
+      .eq('trip_id', tripId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+  return (global._tripNotes || []).filter((n) => n.trip_id === tripId);
+}
+
 async function getCarProfile() {
   if (supabase) {
     const { data, error } = await supabase
@@ -596,6 +630,8 @@ module.exports = {
   addTripPlace,
   getTripPlaces,
   markTripPlaceVisited,
+  addTripNote,
+  getTripNotes,
   getCarProfile,
   setCarProfile,
   getDbStatus,

@@ -1,4 +1,4 @@
-const { createTrip, getTrips, getExpensesByTrip, findTripByName, getUsers, addTripPlace, getTripPlaces, markTripPlaceVisited } = require('../../services/db');
+const { createTrip, getTrips, getExpensesByTrip, findTripByName, getUsers, addTripPlace, getTripPlaces, markTripPlaceVisited, addTripNote, getTripNotes } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
 const { parseTripCreation, formatSplitMode } = require('../../utils/parser');
 const { buildSettlementNotification } = require('./settlement');
@@ -231,4 +231,33 @@ async function handleTripRoute(tripName) {
   return { type: 'trip_route', reply: `เส้นทางทริป "${trip.name}" (${places.length} จุด)\n${url}` };
 }
 
-module.exports = { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleMarkVisited, handleListPlaces, handleTripRoute };
+async function handleAddNote(input) {
+  const tagMatch = input.match(/#([฀-๿a-zA-Z0-9_]+)/);
+  if (!tagMatch) {
+    return { type: 'error', reply: 'ระบุทริปด้วย #ชื่อทริป เช่น โน้ตทริป เบอร์โรงแรม 032-XXXX #หัวหิน' };
+  }
+  const tripName = tagMatch[1];
+  const content = input.replace(/#[฀-๿a-zA-Z0-9_]+/, '').trim();
+  if (!content) return { type: 'error', reply: 'ระบุเนื้อหา note ด้วย' };
+
+  const trip = await findTripByName(tripName);
+  if (!trip) return { type: 'error', reply: `ไม่พบทริป "${tripName}" สร้างก่อนด้วย: สร้างทริป ${tripName}` };
+
+  await addTripNote(trip.id, content);
+  return { type: 'note_added', reply: `📝 บันทึก note ในทริป ${trip.name} แล้ว` };
+}
+
+async function handleListNotes(tripName) {
+  const trip = await findTripByName(tripName.trim());
+  if (!trip) return { type: 'error', reply: `ไม่พบทริป "${tripName}"` };
+
+  const notes = await getTripNotes(trip.id);
+  if (!notes.length) {
+    return { type: 'trip_notes', reply: `ทริป "${trip.name}" ยังไม่มี note\nเพิ่มด้วย: โน้ตทริป [ข้อความ] #${trip.name}` };
+  }
+
+  const lines = [`📋 Note ทริป "${trip.name}"\n`, ...notes.map((n, i) => `${i + 1}. ${n.content}`)];
+  return { type: 'trip_notes', reply: lines.join('\n') };
+}
+
+module.exports = { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes };
