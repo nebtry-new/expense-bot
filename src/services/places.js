@@ -112,7 +112,7 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
   console.log('EV results per midpoint:', batches.map((b) => b.length));
 
   // Build unique station list — apply corridor + rating filters
-  const CORRIDOR_KM = 15;
+  const CORRIDOR_KM = 5;
   const MIN_RATING = 3.0;
   const seen = new Set();
   const stations = [];
