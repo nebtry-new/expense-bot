@@ -30,15 +30,28 @@ async function geocodeText(text) {
 }
 
 async function placesNearby(lat, lng, radiusM) {
-  const keywords = ['EA Anywhere', 'PTT EV Station', 'PEA VOLTA', 'EV charging station'];
-  const results = await Promise.all(keywords.map(async (kw) => {
-    const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json`
-      + `?location=${lat},${lng}&radius=${radiusM}&keyword=${encodeURIComponent(kw)}&key=${apiKey}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    return data.results || [];
-  }));
-  return results.flat();
+  // New Places API (v1) — better Thailand EV station coverage than old nearbysearch
+  const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': 'places.displayName,places.location,places.rating,places.id',
+    },
+    body: JSON.stringify({
+      includedTypes: ['electric_vehicle_charging_station'],
+      locationRestriction: {
+        circle: { center: { latitude: lat, longitude: lng }, radius: radiusM },
+      },
+      maxResultCount: 20,
+    }),
+  });
+  const data = await res.json();
+  if (data.error) {
+    console.error('Places API v1 error:', data.error);
+    return [];
+  }
+  return data.places || [];
 }
 
 async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
@@ -64,17 +77,23 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
 
   console.log('EV search results per midpoint:', batches.map((b) => b.length));
 
-  // Deduplicate by place_id, compute straight-line distance from origin
+  // Deduplicate by id, compute straight-line distance from origin
   const seen = new Set();
   const stations = [];
   for (const batch of batches) {
     for (const place of batch) {
-      if (seen.has(place.place_id)) continue;
-      seen.add(place.place_id);
-      const loc = place.geometry.location;
+      const id = place.id || place.place_id;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      // New API: place.location = { latitude, longitude }; Old API: place.geometry.location = { lat, lng }
+      const loc = place.location
+        ? { lat: place.location.latitude, lng: place.location.longitude }
+        : place.geometry?.location;
+      if (!loc) continue;
       const distKm = Math.round(haversineKm(originCoord, loc));
+      const name = place.displayName?.text || place.name || '';
       stations.push({
-        name: (place.name || '').slice(0, 30),
+        name: name.slice(0, 30),
         distKm,
         lat: loc.lat,
         lng: loc.lng,
