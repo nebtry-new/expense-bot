@@ -30,11 +30,15 @@ async function geocodeText(text) {
 }
 
 async function placesNearby(lat, lng, radiusM) {
-  const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json`
-    + `?location=${lat},${lng}&radius=${radiusM}&type=electric_vehicle_charging_station&key=${apiKey}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  return data.results || [];
+  const keywords = ['EA Anywhere', 'PTT EV Station', 'PEA VOLTA', 'EV charging station'];
+  const results = await Promise.all(keywords.map(async (kw) => {
+    const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json`
+      + `?location=${lat},${lng}&radius=${radiusM}&keyword=${encodeURIComponent(kw)}&key=${apiKey}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.results || [];
+  }));
+  return results.flat();
 }
 
 async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
