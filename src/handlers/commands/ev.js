@@ -163,7 +163,8 @@ async function handleEvBatteryReply(text, lineUserId) {
   delete evRouteState.pendingByUser[lineUserId];
 
   const result = await searchEvStations(pending.origin, destination, batteryPct, car.max_range_km);
-  return { type: 'ev_route', reply: result };
+  if (result.error) return { type: 'ev_route', reply: result.error };
+  return { type: 'ev_route', reply: `พบจุดชาร์จ ${result.stations.length} จุด`, stations: result.stations };
 }
 
 module.exports = { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleLocationForEv, handleEvBatteryReply, extractMapsUrl };

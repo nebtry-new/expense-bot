@@ -54,17 +54,27 @@ async function sendReplyMessage(event, text) {
 }
 
 async function sendPushMessage(toUserId, text) {
-  if (!lineClient || !toUserId) {
-    return;
-  }
-
+  if (!lineClient || !toUserId) return;
   try {
-    await lineClient.pushMessage({
-      to: toUserId,
-      messages: [{ type: 'text', text }],
-    });
+    await lineClient.pushMessage({ to: toUserId, messages: [{ type: 'text', text }] });
   } catch (error) {
     console.error('LINE pushMessage failed:', error?.response?.data || error.message || error);
+  }
+}
+
+async function sendPushEvStations(toUserId, stations) {
+  if (!lineClient || !toUserId || !stations?.length) return;
+  const messages = stations.slice(0, 5).map((s, i) => ({
+    type: 'location',
+    title: `${i + 1}. ${s.name}  ~${s.distKm}กม.`,
+    address: s.address || s.name,
+    latitude: s.lat,
+    longitude: s.lng,
+  }));
+  try {
+    await lineClient.pushMessage({ to: toUserId, messages });
+  } catch (error) {
+    console.error('LINE pushMessage (locations) failed:', error?.response?.data || error.message || error);
   }
 }
 
@@ -130,7 +140,12 @@ app.post('/webhook', async (req, res) => {
         // Reply immediately so user knows bot is working, then push result
         await sendReplyMessage(event, 'กำลังค้นหาจุดชาร์จ EV...');
         const result = await handleTextMessage(messageText, userContext);
-        await sendPushMessage(lineUserId, result.reply);
+        if (result.stations?.length) {
+          await sendPushMessage(lineUserId, result.reply);
+          await sendPushEvStations(lineUserId, result.stations);
+        } else {
+          await sendPushMessage(lineUserId, result.reply);
+        }
       } else {
         const result = await handleTextMessage(messageText, userContext);
         replies.push({ type: 'text', text: result.reply });

@@ -55,14 +55,14 @@ async function placesNearby(lat, lng, radiusM) {
 }
 
 async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
-  if (!apiKey) return 'ไม่ได้ตั้งค่า GOOGLE_PLACES_API_KEY';
+  if (!apiKey) return { error: 'ไม่ได้ตั้งค่า GOOGLE_PLACES_API_KEY' };
 
   const [originCoord, destCoord] = await Promise.all([
     geocodeText(originText),
     geocodeText(destText),
   ]);
-  if (!originCoord) return `หาตำแหน่งต้นทางไม่ได้ กรุณาลองใหม่`;
-  if (!destCoord) return `หาตำแหน่งปลายทางไม่ได้ กรุณาลองใหม่`;
+  if (!originCoord) return { error: 'หาตำแหน่งต้นทางไม่ได้ กรุณาลองใหม่' };
+  if (!destCoord) return { error: 'หาตำแหน่งปลายทางไม่ได้ กรุณาลองใหม่' };
 
   const reachableKm = (batteryPct / 100) * maxRangeKm;
   const routeKm = haversineKm(originCoord, destCoord);
@@ -110,11 +110,11 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
 
   if (!inRange.length) {
     return stations.length
-      ? `พบ ${stations.length} สถานี แต่อยู่เกินระยะแบต (~${Math.round(reachableKm)} กม.) กรุณาชาร์จก่อนออกเดินทาง`
-      : 'ไม่พบจุดชาร์จ EV บนเส้นทางนี้';
+      ? { error: `พบ ${stations.length} สถานี แต่อยู่เกินระยะแบต (~${Math.round(reachableKm)} กม.) กรุณาชาร์จก่อนออกเดินทาง` }
+      : { error: 'ไม่พบจุดชาร์จ EV บนเส้นทางนี้' };
   }
 
-  // Prefer stations where battery has dropped >50% of remaining range
+  // Select: prefer stations where battery has dropped >50% (worth stopping)
   const halfKm = reachableKm * 0.5;
   const preferred = inRange.filter((s) => s.distKm >= halfKm);
   const early = inRange.filter((s) => s.distKm < halfKm);
@@ -122,13 +122,10 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
   const byRating = (a, b) => b.rating - a.rating || a.distKm - b.distKm;
   const top5 = [...preferred.sort(byRating), ...early.sort(byRating)].slice(0, 5);
 
-  const lines = top5.map((s, i) => {
-    const link = `https://maps.google.com/maps?q=${s.lat},${s.lng}`;
-    const label = s.address ? `${s.name}\n   ${s.address}` : s.name;
-    return `${i + 1}. ${label} ~${s.distKm}กม.\n${link}`;
-  });
+  // Display order: ascending distance (A→B route order)
+  top5.sort((a, b) => a.distKm - b.distKm);
 
-  return `จุดชาร์จแนะนำ:\n\n${lines.join('\n\n')}`;
+  return { stations: top5 };
 }
 
 module.exports = { searchEvStations };
