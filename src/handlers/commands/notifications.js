@@ -1,6 +1,51 @@
 const { scheduleNotification, listPendingNotifications, cancelNotificationById } = require('../../services/db');
 const { parseNotificationInput, toLocalDisplay } = require('../../utils/parse-date');
 
+function handleShowDatetimePicker() {
+  const now = new Date();
+  const localNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const min = localNow.toISOString().slice(0, 16);
+  const max = `${localNow.getUTCFullYear() + 1}-12-31T23:59`;
+
+  return {
+    type: 'datetime_picker',
+    replyMessage: {
+      type: 'template',
+      altText: 'เลือกวันเวลาแจ้งเตือน',
+      template: {
+        type: 'buttons',
+        text: 'เลือกวันและเวลาที่ต้องการแจ้งเตือน',
+        actions: [{
+          type: 'datetimepicker',
+          label: '📅 เลือกวันเวลา',
+          data: 'action=pick_notif_datetime',
+          mode: 'datetime',
+          min,
+          max,
+        }],
+      },
+    },
+  };
+}
+
+async function handleScheduleFromDatetime(message, scheduledAt, lineUserId) {
+  const BROADCAST_KW = /\s+ทั้งคู่$/;
+  const HAS_TRIP_TAG = /#[฀-๿a-zA-Z0-9_]+/.test(message);
+  const broadcast = HAS_TRIP_TAG || BROADCAST_KW.test(message);
+  const cleanMessage = message.replace(BROADCAST_KW, '').trim();
+
+  if (!cleanMessage) {
+    return { type: 'error', reply: 'ระบุข้อความแจ้งเตือนด้วย' };
+  }
+
+  await scheduleNotification({ message: cleanMessage, scheduledAt, lineUserId: broadcast ? null : lineUserId });
+  const scope = broadcast ? '(ทั้งคู่)' : '(เฉพาะคุณ)';
+  return {
+    type: 'notification_set',
+    reply: `⏰ ตั้งแจ้งเตือน ${scope}: ${toLocalDisplay(scheduledAt)} น.\n"${cleanMessage}"`,
+  };
+}
+
 async function handleScheduleNotification(input, lineUserId) {
   const BROADCAST_KW = /\s+ทั้งคู่$/;
   const HAS_TRIP_TAG = /#[฀-๿a-zA-Z0-9_]+/.test(input);
@@ -55,4 +100,4 @@ async function handleCancelNotification(input) {
   return { type: 'notification_cancelled', reply: `ยกเลิกแจ้งเตือน "${target.message}" แล้ว` };
 }
 
-module.exports = { handleScheduleNotification, handleListNotifications, handleCancelNotification };
+module.exports = { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification };

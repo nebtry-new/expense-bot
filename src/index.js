@@ -7,7 +7,8 @@ const { runPendingNotifications } = require('./services/notifications');
 const { analyzeSlip } = require('./services/claude');
 const { slipConfirmState } = require('./handlers/state');
 const { handleLocationForEv } = require('./handlers/commands/ev');
-const { evRouteState } = require('./handlers/state');
+const { evRouteState, datetimePickerState } = require('./handlers/state');
+const { parseDatetimePickerValue, toLocalDisplay } = require('./utils/parse-date');
 
 dotenv.config();
 
@@ -39,16 +40,13 @@ async function getImageBase64(messageId) {
   return Buffer.concat(chunks).toString('base64');
 }
 
-async function sendReplyMessage(event, text) {
-  if (!lineClient || !event?.replyToken) {
-    return;
-  }
-
+async function sendReplyMessage(event, textOrMessage) {
+  if (!lineClient || !event?.replyToken) return;
   try {
-    await lineClient.replyMessage({
-      replyToken: event.replyToken,
-      messages: [{ type: 'text', text }],
-    });
+    const messages = typeof textOrMessage === 'string'
+      ? [{ type: 'text', text: textOrMessage }]
+      : [textOrMessage];
+    await lineClient.replyMessage({ replyToken: event.replyToken, messages });
   } catch (error) {
     console.error('LINE replyMessage failed:', error?.response?.data || error.message || error);
   }
@@ -143,8 +141,9 @@ app.post('/webhook', async (req, res) => {
         await sendPushMessage(lineUserId, result.reply);
       } else {
         const result = await handleTextMessage(messageText, userContext);
-        replies.push({ type: 'text', text: result.reply });
-        await sendReplyMessage(event, result.reply);
+        const replyPayload = result.replyMessage || result.reply;
+        replies.push(typeof replyPayload === 'string' ? { type: 'text', text: replyPayload } : replyPayload);
+        await sendReplyMessage(event, replyPayload);
 
         if (result.tripNotify) {
           const allUsers = await getUsers();
@@ -172,6 +171,20 @@ app.post('/webhook', async (req, res) => {
       const { latitude, longitude, address } = event.message;
       const result = handleLocationForEv(latitude, longitude, address, lineUserId);
       await sendReplyMessage(event, result.reply);
+    }
+
+    if (event.type === 'postback') {
+      const lineUserId = event.source?.userId || 'unknown';
+      const data = event.postback?.data || '';
+
+      if (data === 'action=pick_notif_datetime') {
+        const datetime = event.postback?.params?.datetime;
+        if (datetime) {
+          const scheduledAt = parseDatetimePickerValue(datetime);
+          datetimePickerState.pendingByUser[lineUserId] = { scheduledAt };
+          await sendReplyMessage(event, `⏰ เลือก ${toLocalDisplay(scheduledAt)} น. แล้ว\nพิมพ์ข้อความแจ้งเตือน\n(เติม ทั้งคู่ หรือ #ทริป ท้ายเพื่อแจ้งสองคน)`);
+        }
+      }
     }
 
     if (event.type === 'follow') {

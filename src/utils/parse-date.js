@@ -18,8 +18,15 @@ const MONTH_LABELS = ['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 
 const TZ_OFFSET_H = 7;
 
 function thaiToUtc(yr, mon, day, h, min) {
-  // User input is Thailand time (UTC+7); subtract 7h to get UTC
   return new Date(Date.UTC(yr, mon - 1, day, h - TZ_OFFSET_H, min, 0));
+}
+
+// Parse LINE datetimepicker value "YYYY-MM-DDThh:mm" (Thailand time) → UTC Date
+function parseDatetimePickerValue(value) {
+  const [datePart, timePart] = value.split('T');
+  const [yr, mon, day] = datePart.split('-').map(Number);
+  const [h, min] = timePart.split(':').map(Number);
+  return thaiToUtc(yr, mon, day, h, min);
 }
 
 function toLocalDisplay(utcDate) {
@@ -79,4 +86,4 @@ function parseNotificationInput(input) {
   return null;
 }
 
-module.exports = { parseNotificationInput, toLocalDisplay };
+module.exports = { parseNotificationInput, toLocalDisplay, parseDatetimePickerValue };

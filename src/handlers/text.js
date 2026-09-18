@@ -4,10 +4,10 @@ const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('
 const { handleExpenseLines, handleDeleteLastExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
 const { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
-const { handleScheduleNotification, handleListNotifications, handleCancelNotification } = require('./commands/notifications');
+const { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification } = require('./commands/notifications');
 const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
-const { clearAllState, slipConfirmState } = require('./state');
+const { clearAllState, slipConfirmState, datetimePickerState } = require('./state');
 
 const HELP_TEXT = [
   'คู่มือการใช้งาน',
@@ -49,8 +49,9 @@ const HELP_TEXT = [
   'ดู note: โน้ต (ชื่อทริป)',
   '',
   '── แจ้งเตือน ──',
-  'ตั้งแจ้งเตือน (เฉพาะคุณ): แจ้งเตือน 25 ธ.ค. 09:00 เช็คกระเป๋า',
-  'ตั้งแจ้งเตือน (ทั้งคู่): แจ้งเตือน 25 ธ.ค. 09:00 เตรียมทริป #ทริป',
+  'ตั้งแจ้งเตือน (เลือกจากปฏิทิน): แจ้งเตือนใหม่',
+  'ตั้งแจ้งเตือน (พิมพ์วัน): แจ้งเตือน 25 ธ.ค. 09:00 เช็คกระเป๋า',
+  'แจ้งทั้งคู่: เติม ทั้งคู่ หรือ #ชื่อทริป ท้ายข้อความ',
   'ดูแจ้งเตือนที่รออยู่: ดูแจ้งเตือน',
   'ยกเลิก: ยกเลิกแจ้งเตือน [เลข]',
   '',
@@ -207,6 +208,16 @@ async function handleTextMessage(text, userContext = {}) {
   const listNotesMatch = normalized.match(/^โน้ต\s+(.+)$/i);
   if (listNotesMatch) {
     return handleListNotes(listNotesMatch[1].trim());
+  }
+
+  if (/^แจ้งเตือนใหม่$/i.test(normalized)) {
+    return handleShowDatetimePicker();
+  }
+
+  if (datetimePickerState.pendingByUser[lineUserId]) {
+    const { scheduledAt } = datetimePickerState.pendingByUser[lineUserId];
+    delete datetimePickerState.pendingByUser[lineUserId];
+    return handleScheduleFromDatetime(normalized, scheduledAt, lineUserId);
   }
 
   const notifMatch = normalized.match(/^แจ้งเตือน\s+(.+)$/i);
