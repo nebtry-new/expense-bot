@@ -1,4 +1,5 @@
 const { createTrip, getTrips, getExpensesByTrip, findTripByName, getUsers, addTripPlace, getTripPlaces, markTripPlaceVisited, addTripNote, getTripNotes } = require('../../services/db');
+const { fetchPageTitle } = require('../../utils/fetch-title');
 const { calculateBalances } = require('../../utils/balance');
 const { parseTripCreation, formatSplitMode } = require('../../utils/parser');
 const { buildSettlementNotification } = require('./settlement');
@@ -125,7 +126,19 @@ async function handleAddPlace(input) {
     return { type: 'error', reply: 'ระบุทริปด้วย #ชื่อทริป เช่น เพิ่มที่ ร้านต้มยำ #หัวหิน' };
   }
 
-  const { tripName, name, notes, category, mapsUrl } = parsed;
+  let { tripName, notes, category, mapsUrl } = parsed;
+  let { name } = parsed;
+
+  // Auto-fetch title from URL when no name given
+  if (!name && mapsUrl) {
+    const fetched = await fetchPageTitle(mapsUrl);
+    if (fetched) {
+      name = fetched;
+    } else {
+      return { type: 'error', reply: 'อ่านชื่อจาก link ไม่ได้ กรุณาพิมพ์ชื่อด้วย เช่น เพิ่มที่ ร้านต้มยำ | https://...' };
+    }
+  }
+
   if (!name) {
     return { type: 'error', reply: 'ระบุชื่อสถานที่ด้วย เช่น เพิ่มที่ ร้านต้มยำ #หัวหิน' };
   }
