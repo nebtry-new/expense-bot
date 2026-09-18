@@ -4,6 +4,7 @@ const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('
 const { handleExpenseLines, handleDeleteLastExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
 const { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
+const { handleScheduleNotification, handleListNotifications, handleCancelNotification } = require('./commands/notifications');
 const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
 const { clearAllState, slipConfirmState } = require('./state');
@@ -44,6 +45,11 @@ const HELP_TEXT = [
   '',
   'เพิ่ม note ทริป: โน้ตทริป (ข้อความ) #ทริป',
   'ดู note: โน้ต (ชื่อทริป)',
+  '',
+  '── แจ้งเตือน ──',
+  'ตั้งแจ้งเตือน: แจ้งเตือน 25 ธ.ค. 09:00 เช็คกระเป๋า',
+  'ดูแจ้งเตือนที่รออยู่: ดูแจ้งเตือน',
+  'ยกเลิก: ยกเลิกแจ้งเตือน [เลข]',
   '',
   '── EV ──',
   'ตั้งค่าระยะรถ: ตั้งค่ารถ 400 กม.',
@@ -198,6 +204,20 @@ async function handleTextMessage(text, userContext = {}) {
   const listNotesMatch = normalized.match(/^โน้ต\s+(.+)$/i);
   if (listNotesMatch) {
     return handleListNotes(listNotesMatch[1].trim());
+  }
+
+  const notifMatch = normalized.match(/^แจ้งเตือน\s+(.+)$/i);
+  if (notifMatch) {
+    return handleScheduleNotification(notifMatch[1].trim());
+  }
+
+  if (/^ดูแจ้งเตือน$/i.test(normalized)) {
+    return handleListNotifications();
+  }
+
+  const cancelNotifMatch = normalized.match(/^ยกเลิกแจ้งเตือน\s+(.+)$/i);
+  if (cancelNotifMatch) {
+    return handleCancelNotification(cancelNotifMatch[1].trim());
   }
 
   const setCarMatch = normalized.match(/^ตั้งค่ารถ\s*(.+)$/i);

@@ -3,6 +3,7 @@ const line = require('@line/bot-sdk');
 const dotenv = require('dotenv');
 const { handleTextMessage } = require('./handlers/text');
 const { getUsers, getExpenses, getDbStatus } = require('./services/db');
+const { runPendingNotifications } = require('./services/notifications');
 const { analyzeSlip } = require('./services/claude');
 const { slipConfirmState } = require('./handlers/state');
 const { handleLocationForEv } = require('./handlers/commands/ev');
@@ -74,6 +75,20 @@ app.use(express.json());
 
 app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'expense-bot' });
+});
+
+app.post('/internal/run-notifications', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const result = await runPendingNotifications(sendPushMessage);
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('run-notifications failed:', error.message);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/debug-data', async (req, res) => {

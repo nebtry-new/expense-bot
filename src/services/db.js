@@ -623,6 +623,83 @@ async function getExpensesByTrip(tripId) {
   return expenses.filter((e) => e.tripId === tripId);
 }
 
+async function scheduleNotification({ type = 'manual', message, scheduledAt }) {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert({ type, message, scheduled_at: scheduledAt.toISOString() })
+      .select();
+    if (error) throw error;
+    return data?.[0] || null;
+  }
+  const n = {
+    id: `notif_${Date.now()}`,
+    type,
+    message,
+    scheduled_at: scheduledAt.toISOString(),
+    sent_at: null,
+    created_at: new Date().toISOString(),
+  };
+  if (!global._notifications) global._notifications = [];
+  global._notifications.push(n);
+  return n;
+}
+
+async function getPendingNotifications() {
+  const now = new Date().toISOString();
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .lte('scheduled_at', now)
+      .is('sent_at', null)
+      .order('scheduled_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+  return (global._notifications || []).filter((n) => !n.sent_at && n.scheduled_at <= now);
+}
+
+async function markNotificationSent(id) {
+  if (supabase) {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ sent_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  const n = (global._notifications || []).find((x) => x.id === id);
+  if (n) n.sent_at = new Date().toISOString();
+}
+
+async function listPendingNotifications() {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .is('sent_at', null)
+      .order('scheduled_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+  return (global._notifications || [])
+    .filter((n) => !n.sent_at)
+    .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+}
+
+async function cancelNotificationById(id) {
+  if (supabase) {
+    const { error } = await supabase.from('notifications').delete().eq('id', id);
+    if (error) throw error;
+    return true;
+  }
+  const idx = (global._notifications || []).findIndex((n) => n.id === id);
+  if (idx === -1) return false;
+  global._notifications.splice(idx, 1);
+  return true;
+}
+
 function getDbStatus() {
   return {
     mode: supabase ? 'supabase' : 'memory',
@@ -655,6 +732,11 @@ module.exports = {
   getTripNotes,
   getCarProfile,
   setCarProfile,
+  scheduleNotification,
+  getPendingNotifications,
+  markNotificationSent,
+  listPendingNotifications,
+  cancelNotificationById,
   getDbStatus,
   terminateUserByName,
   restoreUserByName,
