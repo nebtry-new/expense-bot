@@ -65,10 +65,12 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
 ค้นหา EA Anywhere, PEA Volta, PTT EV และเครือข่ายอื่นๆ
 
 ตอบเป็น JSON array เท่านั้น ห้ามมีข้อความอื่นนอกจาก JSON:
-[{"name":"ชื่อสถานี","provider":"EA","numChargers":8,"distanceKm":65,"mapsLink":"https://..."}]
+[{"name":"ชื่อสถานีสั้นๆ","provider":"EA","numChargers":8,"distanceKm":65,"mapsLink":"https://maps.google.com/maps?q=ชื่อสถานี"}]
 
-- distanceKm คือระยะห่างจากต้นทางตามถนนจริง (กม.)
-- numChargers คือจำนวนหัวชาร์จหรือตู้ชาร์จ
+- name: ชื่อสถานีสั้นๆ ไม่เกิน 30 ตัวอักษร ไม่ต้องใส่ที่อยู่
+- distanceKm: ระยะห่างจากต้นทางตามถนนจริง (กม.)
+- numChargers: จำนวนหัวชาร์จหรือตู้ชาร์จ
+- mapsLink: URL แบบสั้น https://maps.google.com/maps?q=ชื่อสถานี เท่านั้น
 - หาให้ครบที่สุดเท่าที่จะหาได้`,
   }];
 
@@ -99,17 +101,15 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
   // Parse structured JSON from Claude, apply distance-based selection logic
   let stations = [];
   try {
-    const match = raw.match(/\[[\s\S]*\]/);
+    const match = raw.match(/\[[\s\S]*?\]/);
     if (match) stations = JSON.parse(match[0]);
   } catch {
-    // JSON parse failed — return raw text as fallback
-    return raw || 'ไม่พบข้อมูลจุดชาร์จ';
+    return 'ไม่พบข้อมูลจุดชาร์จ กรุณาลองใหม่อีกครั้ง';
   }
 
-  if (!stations.length) return raw || 'ไม่พบข้อมูลจุดชาร์จ';
+  if (!stations.length) return 'ไม่พบข้อมูลจุดชาร์จบนเส้นทางนี้';
 
   // Prefer stations where battery has dropped >50% of remaining range
-  // (worth stopping vs. stations that are too close to origin)
   const halfKm = reachableKm * 0.5;
   const preferred = stations.filter((s) => Number(s.distanceKm) >= halfKm);
   const early = stations.filter((s) => Number(s.distanceKm) < halfKm);
@@ -121,13 +121,16 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
   ].slice(0, 5);
 
   const lines = top5.map((s, i) => {
-    const dist = s.distanceKm ? `ห่าง ~${s.distanceKm} กม.` : '';
-    const chargers = s.numChargers ? `${s.numChargers} ตู้` : '';
-    const meta = [dist, chargers].filter(Boolean).join(' | ');
-    return `${i + 1}. ${s.name} (${s.provider})${meta ? `\n   ${meta}` : ''}\n   ${s.mapsLink || ''}`;
+    const name = String(s.name || '').slice(0, 30);
+    const meta = [
+      s.distanceKm ? `~${s.distanceKm}กม.` : '',
+      s.numChargers ? `${s.numChargers}ตู้` : '',
+    ].filter(Boolean).join(' ');
+    const header = `${i + 1}. ${name} (${s.provider || '?'})${meta ? ` ${meta}` : ''}`;
+    return s.mapsLink ? `${header}\n${s.mapsLink}` : header;
   });
 
-  return lines.join('\n\n');
+  return `จุดชาร์จแนะนำ:\n\n${lines.join('\n\n')}`;
 }
 
 module.exports = { analyzeSlip, searchEvStations };
