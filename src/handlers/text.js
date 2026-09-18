@@ -47,7 +47,8 @@ const HELP_TEXT = [
   'ดู note: โน้ต (ชื่อทริป)',
   '',
   '── แจ้งเตือน ──',
-  'ตั้งแจ้งเตือน: แจ้งเตือน 25 ธ.ค. 09:00 เช็คกระเป๋า',
+  'ตั้งแจ้งเตือน (เฉพาะคุณ): แจ้งเตือน 25 ธ.ค. 09:00 เช็คกระเป๋า',
+  'ตั้งแจ้งเตือน (ทั้งคู่): แจ้งเตือน 25 ธ.ค. 09:00 เตรียมทริป ทั้งคู่',
   'ดูแจ้งเตือนที่รออยู่: ดูแจ้งเตือน',
   'ยกเลิก: ยกเลิกแจ้งเตือน [เลข]',
   '',
@@ -208,7 +209,7 @@ async function handleTextMessage(text, userContext = {}) {
 
   const notifMatch = normalized.match(/^แจ้งเตือน\s+(.+)$/i);
   if (notifMatch) {
-    return handleScheduleNotification(notifMatch[1].trim());
+    return handleScheduleNotification(notifMatch[1].trim(), lineUserId);
   }
 
   if (/^ดูแจ้งเตือน$/i.test(normalized)) {

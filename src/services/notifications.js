@@ -10,7 +10,10 @@ async function runPendingNotifications(sendPushFn) {
 
   let sent = 0;
   for (const notif of pending) {
-    for (const lineUserId of lineUserIds) {
+    const targets = notif.line_user_id
+      ? lineUserIds.filter((id) => id === notif.line_user_id)
+      : lineUserIds;
+    for (const lineUserId of targets) {
       await sendPushFn(lineUserId, `🔔 ${notif.message}`);
     }
     await markNotificationSent(notif.id);

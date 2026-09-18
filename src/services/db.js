@@ -623,11 +623,11 @@ async function getExpensesByTrip(tripId) {
   return expenses.filter((e) => e.tripId === tripId);
 }
 
-async function scheduleNotification({ type = 'manual', message, scheduledAt }) {
+async function scheduleNotification({ type = 'manual', message, scheduledAt, lineUserId = null }) {
   if (supabase) {
     const { data, error } = await supabase
       .from('notifications')
-      .insert({ type, message, scheduled_at: scheduledAt.toISOString() })
+      .insert({ type, message, scheduled_at: scheduledAt.toISOString(), line_user_id: lineUserId })
       .select();
     if (error) throw error;
     return data?.[0] || null;
@@ -637,6 +637,7 @@ async function scheduleNotification({ type = 'manual', message, scheduledAt }) {
     type,
     message,
     scheduled_at: scheduledAt.toISOString(),
+    line_user_id: lineUserId,
     sent_at: null,
     created_at: new Date().toISOString(),
   };

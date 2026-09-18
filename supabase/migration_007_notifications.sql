@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   message      text NOT NULL,
   scheduled_at timestamptz NOT NULL,
   sent_at      timestamptz,
+  line_user_id text,   -- null = broadcast to all users
   created_at   timestamptz DEFAULT now()
 );
 

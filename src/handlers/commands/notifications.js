@@ -1,8 +1,12 @@
 const { scheduleNotification, listPendingNotifications, cancelNotificationById } = require('../../services/db');
 const { parseNotificationInput, toLocalDisplay } = require('../../utils/parse-date');
 
-async function handleScheduleNotification(input) {
-  const parsed = parseNotificationInput(input);
+async function handleScheduleNotification(input, lineUserId) {
+  const BROADCAST_KW = /\s+ทั้งคู่$/;
+  const broadcast = BROADCAST_KW.test(input);
+  const cleanInput = input.replace(BROADCAST_KW, '').trim();
+
+  const parsed = parseNotificationInput(cleanInput);
   if (!parsed) {
     return { type: 'error', reply: 'รูปแบบไม่ถูกต้อง เช่น แจ้งเตือน 25 ธ.ค. 09:00 เช็คกระเป๋า' };
   }
@@ -12,10 +16,11 @@ async function handleScheduleNotification(input) {
     return { type: 'error', reply: 'วันเวลาที่ระบุผ่านไปแล้ว กรุณาระบุวันในอนาคต' };
   }
 
-  await scheduleNotification({ message, scheduledAt });
+  await scheduleNotification({ message, scheduledAt, lineUserId: broadcast ? null : lineUserId });
+  const scope = broadcast ? '(ทั้งคู่)' : '(เฉพาะคุณ)';
   return {
     type: 'notification_set',
-    reply: `⏰ ตั้งแจ้งเตือน: ${toLocalDisplay(scheduledAt)} น.\n"${message}"`,
+    reply: `⏰ ตั้งแจ้งเตือน ${scope}: ${toLocalDisplay(scheduledAt)} น.\n"${message}"`,
   };
 }
 
