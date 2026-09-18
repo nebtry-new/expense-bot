@@ -43,7 +43,7 @@ async function placesNearby(lat, lng, radiusM) {
       locationRestriction: {
         circle: { center: { latitude: lat, longitude: lng }, radius: radiusM },
       },
-      maxResultCount: 20,
+      maxResultCount: 10,
     }),
   });
   const data = await res.json();
