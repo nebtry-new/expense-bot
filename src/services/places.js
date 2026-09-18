@@ -21,6 +21,10 @@ async function geocodeText(text) {
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(text)}&key=${apiKey}`;
   const res = await fetch(url);
   const data = await res.json();
+  if (data.status !== 'OK') {
+    console.error('Geocoding failed:', { text, status: data.status, error: data.error_message });
+    return null;
+  }
   const loc = data.results?.[0]?.geometry?.location;
   return loc ? { lat: loc.lat, lng: loc.lng } : null;
 }
