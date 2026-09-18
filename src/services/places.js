@@ -49,11 +49,16 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
 
   const reachableKm = (batteryPct / 100) * maxRangeKm;
   const routeKm = haversineKm(originCoord, destCoord);
-  const radiusM = Math.min(50000, Math.round(routeKm * 1000 * 0.25));
+  // Minimum 15km radius so short routes still get results
+  const radiusM = Math.min(50000, Math.max(15000, Math.round(routeKm * 1000 * 0.25)));
+
+  console.log('EV search:', { originCoord, destCoord, routeKm: routeKm.toFixed(1), radiusM, reachableKm: reachableKm.toFixed(1) });
 
   // Search at 25%, 50%, 75% along the straight-line route
   const midpoints = [0.25, 0.5, 0.75].map((t) => interpolate(originCoord, destCoord, t));
   const batches = await Promise.all(midpoints.map((p) => placesNearby(p.lat, p.lng, radiusM)));
+
+  console.log('EV search results per midpoint:', batches.map((b) => b.length));
 
   // Deduplicate by place_id, compute straight-line distance from origin
   const seen = new Set();
@@ -64,24 +69,30 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
       seen.add(place.place_id);
       const loc = place.geometry.location;
       const distKm = Math.round(haversineKm(originCoord, loc));
-      if (distKm <= reachableKm) {
-        stations.push({
-          name: (place.name || '').slice(0, 30),
-          distKm,
-          lat: loc.lat,
-          lng: loc.lng,
-          rating: place.rating || 0,
-        });
-      }
+      stations.push({
+        name: (place.name || '').slice(0, 30),
+        distKm,
+        lat: loc.lat,
+        lng: loc.lng,
+        rating: place.rating || 0,
+      });
     }
   }
 
-  if (!stations.length) return 'ไม่พบจุดชาร์จ EV บนเส้นทางนี้';
+  console.log('EV stations before range filter:', stations.length, '| reachableKm:', reachableKm.toFixed(1));
+
+  const inRange = stations.filter((s) => s.distKm <= reachableKm);
+
+  if (!inRange.length) {
+    return stations.length
+      ? `พบ ${stations.length} สถานี แต่อยู่เกินระยะแบต (~${Math.round(reachableKm)} กม.) กรุณาชาร์จก่อนออกเดินทาง`
+      : 'ไม่พบจุดชาร์จ EV บนเส้นทางนี้';
+  }
 
   // Prefer stations where battery has dropped >50% of remaining range
   const halfKm = reachableKm * 0.5;
-  const preferred = stations.filter((s) => s.distKm >= halfKm);
-  const early = stations.filter((s) => s.distKm < halfKm);
+  const preferred = inRange.filter((s) => s.distKm >= halfKm);
+  const early = inRange.filter((s) => s.distKm < halfKm);
 
   const byRating = (a, b) => b.rating - a.rating || a.distKm - b.distKm;
   const top5 = [...preferred.sort(byRating), ...early.sort(byRating)].slice(0, 5);
