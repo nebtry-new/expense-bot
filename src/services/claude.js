@@ -76,7 +76,7 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
 
   let response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
+    max_tokens: 2048,
     tools: [{ type: 'web_search_20250305', name: 'web_search' }],
     messages,
   });
@@ -90,7 +90,7 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
     messages.push({ role: 'user', content: toolResults });
     response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      max_tokens: 2048,
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages,
     });
@@ -101,8 +101,10 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
   // Parse structured JSON from Claude, apply distance-based selection logic
   let stations = [];
   try {
-    const match = raw.match(/\[[\s\S]*?\]/);
-    if (match) stations = JSON.parse(match[0]);
+    // Extract outermost [...] array (greedy, handles nested objects)
+    const start = raw.indexOf('[');
+    const end = raw.lastIndexOf(']');
+    if (start !== -1 && end > start) stations = JSON.parse(raw.slice(start, end + 1));
   } catch {
     return 'ไม่พบข้อมูลจุดชาร์จ กรุณาลองใหม่อีกครั้ง';
   }
