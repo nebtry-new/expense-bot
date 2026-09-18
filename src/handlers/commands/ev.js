@@ -21,7 +21,7 @@ async function parseMapsUrl(url) {
   if (dirPath) {
     const parts = dirPath.split('/').map((s) => decodeURIComponent(s.replace(/\+/g, ' ')).trim()).filter((s) => s && !s.startsWith('@'));
     if (parts.length >= 2) {
-      return { origin: parts[0], destination: parts[parts.length - 1], waypoints: parts.slice(1, -1) };
+      return { origin: parts[0], destination: parts[parts.length - 1], waypoints: [] };
     }
   }
 
@@ -30,8 +30,18 @@ async function parseMapsUrl(url) {
   // https://www.google.com/maps?q=... (place link — destination only, no origin)
   try {
     const u = new URL(fullUrl);
-    const origin = u.searchParams.get('origin') || u.searchParams.get('saddr');
-    const destination = u.searchParams.get('destination') || u.searchParams.get('daddr');
+
+    // saddr/daddr format — daddr may contain multiple stops joined by " to:", take last
+    const saddr = u.searchParams.get('saddr');
+    const daddr = u.searchParams.get('daddr');
+    if (saddr && daddr) {
+      const dparts = daddr.split(/\s+to:/);
+      return { origin: saddr, destination: dparts[dparts.length - 1].trim(), waypoints: [] };
+    }
+
+    // Standard ?origin=...&destination=...&waypoints=... format
+    const origin = u.searchParams.get('origin');
+    const destination = u.searchParams.get('destination');
     if (origin && destination) {
       const wps = u.searchParams.get('waypoints');
       const waypoints = wps ? wps.split('|').map((w) => w.trim()).filter(Boolean) : [];
