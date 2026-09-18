@@ -164,7 +164,15 @@ async function handleEvBatteryReply(text, lineUserId) {
 
   const result = await searchEvStations(pending.origin, destination, batteryPct, car.max_range_km);
   if (result.error) return { type: 'ev_route', reply: result.error };
-  return { type: 'ev_route', reply: `พบจุดชาร์จ ${result.stations.length} จุด`, stations: result.stations };
+
+  const { stations, originCoord, destCoord } = result;
+  const waypoints = stations.map((s) => `${s.lat},${s.lng}`).join('|');
+  const routeUrl = `https://www.google.com/maps/dir/?api=1`
+    + `&origin=${originCoord.lat},${originCoord.lng}`
+    + `&destination=${destCoord.lat},${destCoord.lng}`
+    + `&waypoints=${encodeURIComponent(waypoints)}`;
+
+  return { type: 'ev_route', reply: `พบจุดชาร์จ ${stations.length} จุด\n${routeUrl}`, stations };
 }
 
 module.exports = { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleLocationForEv, handleEvBatteryReply, extractMapsUrl };

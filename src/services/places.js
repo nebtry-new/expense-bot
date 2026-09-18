@@ -125,7 +125,7 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
   // Display order: ascending distance (A→B route order)
   top5.sort((a, b) => a.distKm - b.distKm);
 
-  return { stations: top5 };
+  return { stations: top5, originCoord, destCoord };
 }
 
 module.exports = { searchEvStations };
