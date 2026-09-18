@@ -16,28 +16,31 @@ async function parseMapsUrl(url) {
     }
   }
 
-  // https://www.google.com/maps/dir/Origin/Destination/
-  const dirMatch = fullUrl.match(/maps\/dir\/([^/?#\n]+)\/([^/?#\n]+)/);
-  if (dirMatch) {
-    const origin = decodeURIComponent(dirMatch[1].replace(/\+/g, ' ')).trim();
-    const destination = decodeURIComponent(dirMatch[2].replace(/\+/g, ' ')).trim();
-    if (origin && destination && !origin.startsWith('@')) {
-      return { origin, destination };
+  // https://www.google.com/maps/dir/Origin/Stop1/Stop2/Destination/
+  const dirPath = fullUrl.match(/maps\/dir\/([^?#\n]+)/)?.[1];
+  if (dirPath) {
+    const parts = dirPath.split('/').map((s) => decodeURIComponent(s.replace(/\+/g, ' ')).trim()).filter((s) => s && !s.startsWith('@'));
+    if (parts.length >= 2) {
+      return { origin: parts[0], destination: parts[parts.length - 1], waypoints: parts.slice(1, -1) };
     }
   }
 
-  // https://www.google.com/maps/dir/?api=1&origin=...&destination=...
+  // https://www.google.com/maps/dir/?api=1&origin=...&destination=...&waypoints=...
   // https://maps.google.com/maps?saddr=...&daddr=... (shortened link redirect format)
   // https://www.google.com/maps?q=... (place link — destination only, no origin)
   try {
     const u = new URL(fullUrl);
     const origin = u.searchParams.get('origin') || u.searchParams.get('saddr');
     const destination = u.searchParams.get('destination') || u.searchParams.get('daddr');
-    if (origin && destination) return { origin, destination };
+    if (origin && destination) {
+      const wps = u.searchParams.get('waypoints');
+      const waypoints = wps ? wps.split('|').map((w) => w.trim()).filter(Boolean) : [];
+      return { origin, destination, waypoints };
+    }
 
     // Place link: q= param — destination only
     const q = u.searchParams.get('q');
-    if (q) return { origin: null, destination: decodeURIComponent(q.replace(/\+/g, ' ')).trim() };
+    if (q) return { origin: null, destination: decodeURIComponent(q.replace(/\+/g, ' ')).trim(), waypoints: [] };
   } catch {
     // ignore
   }
@@ -74,11 +77,13 @@ async function handleMapsLinkForEv(url, lineUserId) {
     type: 'link',
     origin: parsed.origin,
     destination: parsed.destination,
+    waypoints: parsed.waypoints || [],
   };
 
+  const routeLabel = [parsed.origin, ...(parsed.waypoints || []), parsed.destination].join(' → ');
   return {
     type: 'ev_awaiting_battery',
-    reply: `พบเส้นทาง: ${parsed.origin} → ${parsed.destination}\nแบตเหลือกี่ % ครับ? (เช่น 80%)`,
+    reply: `พบเส้นทาง: ${routeLabel}\nแบตเหลือกี่ % ครับ? (เช่น 80%)`,
   };
 }
 
@@ -162,25 +167,30 @@ async function handleEvBatteryReply(text, lineUserId) {
 
   delete evRouteState.pendingByUser[lineUserId];
 
-  const result = await searchEvStations(pending.origin, destination, batteryPct, car.max_range_km);
+  const userWaypoints = pending.waypoints || [];
+  const result = await searchEvStations(pending.origin, destination, batteryPct, car.max_range_km, userWaypoints);
   if (result.error) return { type: 'ev_route', reply: result.error };
 
   const { stations, originCoord, destCoord, canReachDest } = result;
 
   if (!stations.length) {
-    return { type: 'ev_route', reply: 'แบตพอถึงปลายทาง ไม่มีจุดชาร์จบนเส้นทางนี้', stations: [] };
+    return { type: 'ev_route', reply: 'แบตพอถึงปลายทาง ไม่มีจุดชาร์จบนเส้นทางนี้', stations: [], waypointCount: userWaypoints.length };
   }
 
-  const waypoints = stations.map((s) => `${s.lat},${s.lng}`).join('|');
+  // User waypoints (text) first, then charging stops (coords)
+  const allWaypoints = [
+    ...userWaypoints,
+    ...stations.map((s) => `${s.lat},${s.lng}`),
+  ].join('|');
   const routeUrl = `https://www.google.com/maps/dir/?api=1`
     + `&origin=${originCoord.lat},${originCoord.lng}`
     + `&destination=${destCoord.lat},${destCoord.lng}`
-    + `&waypoints=${encodeURIComponent(waypoints)}`;
+    + `&waypoints=${encodeURIComponent(allWaypoints)}`;
 
   const stopLabel = stations.length === 1 ? 'แวะชาร์จ 1 จุด' : `แวะชาร์จ ${stations.length} จุด`;
   const warning = canReachDest ? '' : '\n⚠️ แบตอาจไม่พอถึงปลายทาง ควรชาร์จให้เต็มทุกจุด';
 
-  return { type: 'ev_route', reply: `${stopLabel}${warning}\n${routeUrl}`, stations };
+  return { type: 'ev_route', reply: `${stopLabel}${warning}\n${routeUrl}`, stations, waypointCount: userWaypoints.length };
 }
 
 module.exports = { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleLocationForEv, handleEvBatteryReply, extractMapsUrl };

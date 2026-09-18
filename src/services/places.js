@@ -34,11 +34,14 @@ function interpolate(a, b, t) {
 }
 
 // Fetch actual road route waypoints and distance from Google Directions API
-async function getRouteWaypoints(originCoord, destCoord) {
-  const url = `https://maps.googleapis.com/maps/api/directions/json`
+async function getRouteWaypoints(originCoord, destCoord, waypointCoords = []) {
+  let url = `https://maps.googleapis.com/maps/api/directions/json`
     + `?origin=${originCoord.lat},${originCoord.lng}`
     + `&destination=${destCoord.lat},${destCoord.lng}`
     + `&key=${apiKey}`;
+  if (waypointCoords.length) {
+    url += `&waypoints=${encodeURIComponent(waypointCoords.map((w) => `${w.lat},${w.lng}`).join('|'))}`;
+  }
   try {
     const res = await fetch(url);
     const data = await res.json();
@@ -127,12 +130,13 @@ function planChargingStops(stations, originCoord, destCoord, reachableKm, maxRan
   return { stops, canReachDest };
 }
 
-async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
+async function searchEvStations(originText, destText, batteryPct, maxRangeKm, waypointTexts = []) {
   if (!apiKey) return { error: 'ไม่ได้ตั้งค่า GOOGLE_PLACES_API_KEY' };
 
-  const [originCoord, destCoord] = await Promise.all([
+  const [originCoord, destCoord, ...waypointCoords] = await Promise.all([
     geocodeText(originText),
     geocodeText(destText),
+    ...waypointTexts.map(geocodeText),
   ]);
   if (!originCoord) return { error: 'หาตำแหน่งต้นทางไม่ได้ กรุณาลองใหม่' };
   if (!destCoord) return { error: 'หาตำแหน่งปลายทางไม่ได้ กรุณาลองใหม่' };
@@ -140,8 +144,8 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
   const reachableKm = (batteryPct / 100) * maxRangeKm;
   const straightKm = haversineKm(originCoord, destCoord);
 
-  // Fetch actual road route for accurate corridor check and distance
-  const routeData = await getRouteWaypoints(originCoord, destCoord);
+  // Fetch actual road route (with any user waypoints) for accurate corridor + distance
+  const routeData = await getRouteWaypoints(originCoord, destCoord, waypointCoords.filter(Boolean));
   const routeKm = routeData?.routeDistanceKm ?? straightKm;
   const routeWaypoints = routeData?.waypoints ?? null;
 
