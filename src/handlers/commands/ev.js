@@ -184,7 +184,7 @@ async function handleEvBatteryReply(text, lineUserId) {
   const { stations, originCoord, destCoord, canReachDest } = result;
 
   if (!stations.length) {
-    return { type: 'ev_route', reply: 'แบตพอถึงปลายทาง ไม่มีจุดชาร์จบนเส้นทางนี้', stations: [], waypointCount: userWaypoints.length };
+    return { type: 'ev_route', reply: 'แบตพอถึงปลายทาง ไม่มีจุดชาร์จบนเส้นทางนี้' };
   }
 
   // User waypoints (text) first, then charging stops (coords)
@@ -197,10 +197,12 @@ async function handleEvBatteryReply(text, lineUserId) {
     + `&destination=${destCoord.lat},${destCoord.lng}`
     + `&waypoints=${encodeURIComponent(allWaypoints)}`;
 
+  const startLetter = 66 + userWaypoints.length; // B if no user waypoints
+  const stationList = stations.map((s, i) => `${String.fromCharCode(startLetter + i)}. ${s.name}  ~${s.distKm}กม.`).join('\n');
   const stopLabel = stations.length === 1 ? 'แวะชาร์จ 1 จุด' : `แวะชาร์จ ${stations.length} จุด`;
   const warning = canReachDest ? '' : '\n⚠️ แบตอาจไม่พอถึงปลายทาง ควรชาร์จให้เต็มทุกจุด';
 
-  return { type: 'ev_route', reply: `${stopLabel}${warning}\n${routeUrl}`, stations, waypointCount: userWaypoints.length };
+  return { type: 'ev_route', reply: `${stopLabel}${warning}\n${stationList}\n${routeUrl}` };
 }
 
 module.exports = { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleLocationForEv, handleEvBatteryReply, extractMapsUrl };

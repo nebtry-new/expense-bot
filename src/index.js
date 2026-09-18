@@ -62,28 +62,6 @@ async function sendPushMessage(toUserId, text) {
   }
 }
 
-async function sendPushEvResult(toUserId, replyText, stations, waypointCount = 0) {
-  if (!lineClient || !toUserId) return;
-  const messages = [{ type: 'text', text: replyText }];
-  if (stations?.length) {
-    stations.slice(0, 4).forEach((s, i) => {
-      // A = origin, then user waypoints (B, C...), then charging stops, then destination
-      const letter = String.fromCharCode(66 + waypointCount + i);
-      messages.push({
-        type: 'location',
-        title: `${letter}. ${s.name}  ~${s.distKm}กม.`,
-        address: s.address || s.name,
-        latitude: s.lat,
-        longitude: s.lng,
-      });
-    });
-  }
-  try {
-    await lineClient.pushMessage({ to: toUserId, messages });
-  } catch (error) {
-    console.error('LINE pushMessage (EV result) failed:', error?.response?.data || error.message || error);
-  }
-}
 
 if (lineConfig.channelSecret && lineConfig.channelAccessToken) {
   app.use('/webhook', line.middleware({
@@ -147,7 +125,7 @@ app.post('/webhook', async (req, res) => {
         // Reply immediately so user knows bot is working, then push result
         await sendReplyMessage(event, 'กำลังค้นหาจุดชาร์จ EV...');
         const result = await handleTextMessage(messageText, userContext);
-        await sendPushEvResult(lineUserId, result.reply, result.stations, result.waypointCount || 0);
+        await sendPushMessage(lineUserId, result.reply);
       } else {
         const result = await handleTextMessage(messageText, userContext);
         replies.push({ type: 'text', text: result.reply });
