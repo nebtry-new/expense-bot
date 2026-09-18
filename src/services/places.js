@@ -36,7 +36,7 @@ async function placesNearby(lat, lng, radiusM) {
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': 'places.displayName,places.location,places.rating,places.id',
+      'X-Goog-FieldMask': 'places.displayName,places.location,places.rating,places.id,places.shortFormattedAddress',
     },
     body: JSON.stringify({
       includedTypes: ['electric_vehicle_charging_station'],
@@ -92,8 +92,10 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
       if (!loc) continue;
       const distKm = Math.round(haversineKm(originCoord, loc));
       const name = place.displayName?.text || place.name || '';
+      const address = place.shortFormattedAddress || '';
       stations.push({
-        name: name.slice(0, 30),
+        name,
+        address,
         distKm,
         lat: loc.lat,
         lng: loc.lng,
@@ -122,7 +124,8 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
 
   const lines = top5.map((s, i) => {
     const link = `https://maps.google.com/maps?q=${s.lat},${s.lng}`;
-    return `${i + 1}. ${s.name} ~${s.distKm}กม.\n${link}`;
+    const label = s.address ? `${s.name}\n   ${s.address}` : s.name;
+    return `${i + 1}. ${label} ~${s.distKm}กม.\n${link}`;
   });
 
   return `จุดชาร์จแนะนำ:\n\n${lines.join('\n\n')}`;
