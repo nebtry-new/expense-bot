@@ -1,4 +1,4 @@
-const SOCIAL_SUFFIXES = /\s*[|\-–]\s*(TikTok|Instagram|Facebook|Google Maps|YouTube|LINE|X|Twitter).*$/i;
+const SOCIAL_SUFFIXES = /\s*[|\-–]\s*(TikTok|Instagram|Facebook|Google Maps|YouTube|LINE|X|Twitter|Wongnai|วงใน).*$/i;
 const HTML_ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&#39;': "'", '&quot;': '"' };
 
 function decodeEntities(str) {
