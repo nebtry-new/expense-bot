@@ -3,7 +3,7 @@ const { handleSummary, handleMonthlySummary } = require('./commands/summary');
 const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('./commands/settlement');
 const { handleExpenseLines, handleDeleteLastExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
-const { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleListPlaces } = require('./commands/trip');
+const { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleMarkVisited, handleListPlaces, handleTripRoute } = require('./commands/trip');
 const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
 const { clearAllState, slipConfirmState } = require('./state');
@@ -162,9 +162,19 @@ async function handleTextMessage(text, userContext = {}) {
     return handleAddPlace(addPlaceMatch[1].trim());
   }
 
+  const visitedMatch = normalized.match(/^(?:ไปแล้ว|✓)\s+(.+)$/i);
+  if (visitedMatch) {
+    return handleMarkVisited(visitedMatch[1].trim());
+  }
+
   const listPlacesMatch = normalized.match(/^ที่เที่ยว\s*(.+)$/i);
   if (listPlacesMatch) {
     return handleListPlaces(listPlacesMatch[1].trim());
+  }
+
+  const tripRouteMatch = normalized.match(/^เส้นทางทริป\s*(.+)$/i);
+  if (tripRouteMatch) {
+    return handleTripRoute(tripRouteMatch[1].trim());
   }
 
   const setCarMatch = normalized.match(/^ตั้งค่ารถ\s*(.+)$/i);

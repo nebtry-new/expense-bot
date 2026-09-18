@@ -444,11 +444,11 @@ async function findTripByName(name) {
   return allTrips.find((t) => (t.name || '').toLowerCase() === lower) || null;
 }
 
-async function addTripPlace(tripId, name, notes = null) {
+async function addTripPlace(tripId, name, notes = null, category = 'other', mapsUrl = null) {
   if (supabase) {
     const { data, error } = await supabase
       .from('trip_places')
-      .insert({ trip_id: tripId, name, notes })
+      .insert({ trip_id: tripId, name, notes, category, maps_url: mapsUrl, status: 'pending' })
       .select();
     if (error) throw error;
     return data?.[0] || null;
@@ -458,9 +458,32 @@ async function addTripPlace(tripId, name, notes = null) {
     trip_id: tripId,
     name,
     notes,
+    category: category || 'other',
+    maps_url: mapsUrl,
+    status: 'pending',
     createdAt: new Date().toISOString(),
   };
   tripPlaces.push(place);
+  return place;
+}
+
+async function markTripPlaceVisited(tripId, placeName) {
+  const lower = placeName.toLowerCase();
+  if (supabase) {
+    const { data: places, error: findErr } = await supabase
+      .from('trip_places')
+      .select('id, name')
+      .eq('trip_id', tripId);
+    if (findErr) throw findErr;
+    const match = places?.find((p) => p.name.toLowerCase().includes(lower));
+    if (!match) return null;
+    const { error } = await supabase.from('trip_places').update({ status: 'visited' }).eq('id', match.id);
+    if (error) throw error;
+    return match;
+  }
+  const place = tripPlaces.find((p) => p.trip_id === tripId && p.name.toLowerCase().includes(lower));
+  if (!place) return null;
+  place.status = 'visited';
   return place;
 }
 
@@ -572,6 +595,7 @@ module.exports = {
   getExpensesByTrip,
   addTripPlace,
   getTripPlaces,
+  markTripPlaceVisited,
   getCarProfile,
   setCarProfile,
   getDbStatus,
