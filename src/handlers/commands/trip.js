@@ -61,6 +61,7 @@ async function handleCreateTrip(input) {
   return {
     type: 'trip_created',
     trip,
+    tripNotify: `🗺 สร้างทริปใหม่: "${name}"`,
     reply: `สร้างทริป "${name}" แล้ว (ค่าเริ่มต้น: ${splitLabel})\nบันทึกค่าใช้จ่ายด้วย #${name} ท้ายข้อความ\nเช่น ค่าโรงแรม 1200 #${name}`,
   };
 }
@@ -154,7 +155,11 @@ async function handleAddPlace(input) {
   const lines = [`เพิ่ม "${name}" ในทริป ${trip.name} แล้ว`, `หมวด: ${catLabel}`];
   if (notes) lines.push(`📝 ${notes}`);
   if (mapsUrl) lines.push('📍 บันทึก link แผนที่แล้ว');
-  return { type: 'place_added', reply: lines.join('\n') };
+  return {
+    type: 'place_added',
+    tripNotify: `📍 เพิ่มที่ "${name}" ในทริป ${trip.name} (${catLabel})`,
+    reply: lines.join('\n'),
+  };
 }
 
 async function handleDeletePlace(input) {
@@ -275,7 +280,11 @@ async function handleAddNote(input) {
   if (!trip) return { type: 'error', reply: `ไม่พบทริป "${tripName}" สร้างก่อนด้วย: สร้างทริป ${tripName}` };
 
   await addTripNote(trip.id, content);
-  return { type: 'note_added', reply: `📝 บันทึก note ในทริป ${trip.name} แล้ว` };
+  return {
+    type: 'note_added',
+    tripNotify: `📝 เพิ่ม note ในทริป ${trip.name}: "${content}"`,
+    reply: `📝 บันทึก note ในทริป ${trip.name} แล้ว`,
+  };
 }
 
 async function handleListNotes(tripName) {

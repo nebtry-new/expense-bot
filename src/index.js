@@ -146,6 +146,15 @@ app.post('/webhook', async (req, res) => {
         replies.push({ type: 'text', text: result.reply });
         await sendReplyMessage(event, result.reply);
 
+        if (result.tripNotify) {
+          const allUsers = await getUsers();
+          for (const u of allUsers) {
+            if (u.lineUserId && u.lineUserId !== lineUserId) {
+              await sendPushMessage(u.lineUserId, result.tripNotify);
+            }
+          }
+        }
+
         if (result.type === 'settlement_trigger' && result.notification?.debtorLineUserId) {
           const settlementText = `สรุปยอด: ${result.notification.debtorName} ต้องจ่าย ${result.notification.amount.toFixed(2)} บาท ให้ ${result.notification.creditorName}`;
           await sendPushMessage(result.notification.debtorLineUserId, settlementText);
