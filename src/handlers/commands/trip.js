@@ -155,11 +155,7 @@ async function handleAddPlace(input) {
   const lines = [`เพิ่ม "${name}" ในทริป ${trip.name} แล้ว`, `หมวด: ${catLabel}`];
   if (notes) lines.push(`📝 ${notes}`);
   if (mapsUrl) lines.push('📍 บันทึก link แผนที่แล้ว');
-  return {
-    type: 'place_added',
-    tripNotify: `📍 เพิ่มที่ "${name}" ในทริป ${trip.name} (${catLabel})`,
-    reply: lines.join('\n'),
-  };
+  return { type: 'place_added', reply: lines.join('\n') };
 }
 
 async function handleDeletePlace(input) {
@@ -297,7 +293,7 @@ async function handleAddNote(input) {
     ? `📝 บันทึก note ในทริป ${trip.name} แล้ว`
     : `📝 บันทึก ${items.length} note ในทริป ${trip.name} แล้ว\n${items.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
 
-  return { type: 'note_added', tripNotify: notify, reply };
+  return { type: 'note_added', reply };
 }
 
 async function handleListNotes(tripName) {
