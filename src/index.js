@@ -133,7 +133,7 @@ app.post('/webhook', async (req, res) => {
       const containsMapsUrl = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/.test(messageText);
       const isEvBatteryReply = evPending && !containsMapsUrl && (
         /^\d+%?$/.test(messageText.trim()) ||
-        (evPending.type === 'location' && evPending.destination && /\d+/.test(messageText))
+        (evPending.type === 'location' && evPending.destination && /^\d+%?$/.test(messageText.trim()))
       );
 
       if (isEvBatteryReply) {

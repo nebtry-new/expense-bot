@@ -21,7 +21,7 @@ async function parseMapsUrl(url) {
   if (dirMatch) {
     const origin = decodeURIComponent(dirMatch[1].replace(/\+/g, ' ')).trim();
     const destination = decodeURIComponent(dirMatch[2].replace(/\+/g, ' ')).trim();
-    if (origin && destination && origin !== '@') {
+    if (origin && destination && !origin.startsWith('@')) {
       return { origin, destination };
     }
   }
@@ -166,6 +166,11 @@ async function handleEvBatteryReply(text, lineUserId) {
   if (result.error) return { type: 'ev_route', reply: result.error };
 
   const { stations, originCoord, destCoord, canReachDest } = result;
+
+  if (!stations.length) {
+    return { type: 'ev_route', reply: 'แบตพอถึงปลายทาง ไม่มีจุดชาร์จบนเส้นทางนี้', stations: [] };
+  }
+
   const waypoints = stations.map((s) => `${s.lat},${s.lng}`).join('|');
   const routeUrl = `https://www.google.com/maps/dir/?api=1`
     + `&origin=${originCoord.lat},${originCoord.lng}`

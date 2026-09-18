@@ -19,8 +19,45 @@ function distToSegmentKm(point, a, b) {
   return haversineKm(point, { lat: a.lat + t * dx, lng: a.lng + t * dy });
 }
 
+// Minimum distance from point to actual route (list of waypoint segments)
+function distToRouteKm(point, waypoints) {
+  let min = Infinity;
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const d = distToSegmentKm(point, waypoints[i], waypoints[i + 1]);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
 function interpolate(a, b, t) {
   return { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
+}
+
+// Fetch actual road route waypoints and distance from Google Directions API
+async function getRouteWaypoints(originCoord, destCoord) {
+  const url = `https://maps.googleapis.com/maps/api/directions/json`
+    + `?origin=${originCoord.lat},${originCoord.lng}`
+    + `&destination=${destCoord.lat},${destCoord.lng}`
+    + `&key=${apiKey}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status !== 'OK') {
+      console.error('Directions API failed:', data.status);
+      return null;
+    }
+    const waypoints = [{ lat: originCoord.lat, lng: originCoord.lng }];
+    for (const leg of data.routes[0].legs) {
+      for (const step of leg.steps) {
+        waypoints.push({ lat: step.end_location.lat, lng: step.end_location.lng });
+      }
+    }
+    const routeDistanceKm = data.routes[0].legs.reduce((sum, l) => sum + l.distance.value, 0) / 1000;
+    return { waypoints, routeDistanceKm };
+  } catch (err) {
+    console.error('Directions API error:', err.message);
+    return null;
+  }
 }
 
 async function geocodeText(text) {
@@ -101,12 +138,21 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
   if (!destCoord) return { error: 'หาตำแหน่งปลายทางไม่ได้ กรุณาลองใหม่' };
 
   const reachableKm = (batteryPct / 100) * maxRangeKm;
-  const routeKm = haversineKm(originCoord, destCoord);
+  const straightKm = haversineKm(originCoord, destCoord);
+
+  // Fetch actual road route for accurate corridor check and distance
+  const routeData = await getRouteWaypoints(originCoord, destCoord);
+  const routeKm = routeData?.routeDistanceKm ?? straightKm;
+  const routeWaypoints = routeData?.waypoints ?? null;
+
   const radiusM = Math.min(50000, Math.max(15000, Math.round(routeKm * 1000 * 0.25)));
+  const numPoints = Math.min(8, Math.max(3, Math.ceil(routeKm / 80)));
 
-  console.log('EV search:', { routeKm: routeKm.toFixed(1), radiusM, reachableKm: reachableKm.toFixed(1) });
+  console.log('EV search:', { routeKm: routeKm.toFixed(1), radiusM, reachableKm: reachableKm.toFixed(1), numPoints, usingRoadRoute: !!routeWaypoints });
 
-  const midpoints = [0.25, 0.5, 0.75].map((t) => interpolate(originCoord, destCoord, t));
+  // Spread search points evenly along the straight-line A→B path
+  const midpoints = Array.from({ length: numPoints }, (_, i) =>
+    interpolate(originCoord, destCoord, (i + 1) / (numPoints + 1)));
   const batches = await Promise.all(midpoints.map((p) => placesNearby(p.lat, p.lng, radiusM)));
 
   console.log('EV results per midpoint:', batches.map((b) => b.length));
@@ -128,8 +174,11 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
         : place.geometry?.location;
       if (!loc) continue;
 
-      // Corridor filter: skip stations too far off the A→B straight line
-      if (distToSegmentKm(loc, originCoord, destCoord) > CORRIDOR_KM) continue;
+      // Corridor filter: prefer real road route; fall back to straight line
+      const corridorDist = routeWaypoints
+        ? distToRouteKm(loc, routeWaypoints)
+        : distToSegmentKm(loc, originCoord, destCoord);
+      if (corridorDist > CORRIDOR_KM) continue;
 
       // Rating filter: skip low-rated (allow unrated stations)
       const rating = place.rating || 0;
@@ -149,14 +198,23 @@ async function searchEvStations(originText, destText, batteryPct, maxRangeKm) {
 
   console.log('EV stations after filters:', stations.length);
 
-  if (!stations.length) return { error: 'ไม่พบจุดชาร์จ EV บนเส้นทางนี้' };
+  // Sort by distance from origin (A→B order) before any selection
+  stations.sort((a, b) => a.distKm - b.distKm);
+
+  const batteryOk = reachableKm >= routeKm;
+
+  if (!stations.length) {
+    if (batteryOk) return { stations: [], originCoord, destCoord, canReachDest: true };
+    return { error: 'ไม่พบจุดชาร์จ EV บนเส้นทางนี้' };
+  }
 
   const { stops, canReachDest } = planChargingStops(
     stations, originCoord, destCoord, reachableKm, maxRangeKm,
   );
 
   if (!stops.length) {
-    return { error: `ไม่พบจุดชาร์จที่วิ่งถึงได้จากต้นทาง (แบตวิ่งได้ ~${Math.round(reachableKm)} กม.)` };
+    // Battery sufficient — return corridor stations as suggestions
+    return { stations: stations.slice(0, 5), originCoord, destCoord, canReachDest: true };
   }
 
   return { stations: stops, originCoord, destCoord, canReachDest };
