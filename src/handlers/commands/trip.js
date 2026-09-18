@@ -273,18 +273,31 @@ async function handleAddNote(input) {
     return { type: 'error', reply: 'ระบุทริปด้วย #ชื่อทริป เช่น โน้ตทริป เบอร์โรงแรม 032-XXXX #หัวหิน' };
   }
   const tripName = tagMatch[1];
-  const content = input.replace(/#[฀-๿a-zA-Z0-9_]+/, '').trim();
-  if (!content) return { type: 'error', reply: 'ระบุเนื้อหา note ด้วย' };
+  const contentRaw = input.replace(/#[฀-๿a-zA-Z0-9_]+/, '').trim();
+
+  const items = contentRaw
+    .split(/\n|\s*\|\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (!items.length) return { type: 'error', reply: 'ระบุเนื้อหา note ด้วย' };
 
   const trip = await findTripByName(tripName);
   if (!trip) return { type: 'error', reply: `ไม่พบทริป "${tripName}" สร้างก่อนด้วย: สร้างทริป ${tripName}` };
 
-  await addTripNote(trip.id, content);
-  return {
-    type: 'note_added',
-    tripNotify: `📝 เพิ่ม note ในทริป ${trip.name}: "${content}"`,
-    reply: `📝 บันทึก note ในทริป ${trip.name} แล้ว`,
-  };
+  for (const content of items) {
+    await addTripNote(trip.id, content);
+  }
+
+  const notify = items.length === 1
+    ? `📝 เพิ่ม note ในทริป ${trip.name}: "${items[0]}"`
+    : `📝 เพิ่ม ${items.length} note ในทริป ${trip.name}`;
+
+  const reply = items.length === 1
+    ? `📝 บันทึก note ในทริป ${trip.name} แล้ว`
+    : `📝 บันทึก ${items.length} note ในทริป ${trip.name} แล้ว\n${items.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
+
+  return { type: 'note_added', tripNotify: notify, reply };
 }
 
 async function handleListNotes(tripName) {

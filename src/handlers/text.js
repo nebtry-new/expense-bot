@@ -197,7 +197,7 @@ async function handleTextMessage(text, userContext = {}) {
     return handleTripRoute(tripRouteMatch[1].trim());
   }
 
-  const addNoteMatch = normalized.match(/^โน้ตทริป\s*(.+)$/i);
+  const addNoteMatch = normalized.match(/^โน้ตทริป\s*([\s\S]+)$/i);
   if (addNoteMatch) {
     return handleAddNote(addNoteMatch[1].trim());
   }
