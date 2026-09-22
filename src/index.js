@@ -155,8 +155,14 @@ app.post('/webhook', async (req, res) => {
         }
 
         if (result.type === 'settlement_trigger' && result.notification?.debtorLineUserId) {
-          const settlementText = `สรุปยอด: ${result.notification.debtorName} ต้องจ่าย ${result.notification.amount.toFixed(2)} บาท ให้ ${result.notification.creditorName}`;
-          await sendPushMessage(result.notification.debtorLineUserId, settlementText);
+          const n = result.notification;
+          const pushLines = [];
+          if (n.tripName) pushLines.push(`📋 สรุปทริป "${n.tripName}"`);
+          pushLines.push(`รวม: ${n.amount.toFixed(2)} บาท`);
+          if (n.expenseLines?.length) pushLines.push('', ...n.expenseLines);
+          pushLines.push('', `${n.debtorName} ต้องจ่ายคืน ${n.creditorName} ${n.amount.toFixed(2)} บาท`);
+          pushLines.push('พิมพ์ จ่ายแล้ว เมื่อโอนแล้ว');
+          await sendPushMessage(n.debtorLineUserId, pushLines.join('\n'));
         }
 
         if (result.type === 'payment_sent' && result.notification?.creditorLineUserId) {

@@ -106,6 +106,10 @@ async function handleTripSummary(name) {
         lines.push(`${a.displayName} ต้องจ่ายคืน ${b.displayName} ${formatAmount(balA)} บาท`);
       }
       notification = buildSettlementNotification(balances, users);
+      if (notification) {
+        notification.tripName = trip.name;
+        notification.expenseLines = tripExpenses.map((e) => `• ${e.description} ${Number(e.amount).toLocaleString()} บาท`);
+      }
     }
   }
 
