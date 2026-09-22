@@ -30,6 +30,12 @@ async function handleSummary() {
     let reply;
     let notification = null;
 
+    const activeExpenses = expenses.filter((e) => !e.isCleared && e.splitMode !== 'none');
+    const expenseLines = activeExpenses.map((e) => {
+      const tag = e.tripId ? ' 🗺' : '';
+      return `• ${e.description}${tag} ${Number(e.amount).toLocaleString()} บาท`;
+    });
+
     if (summaryA >= 0 && summaryB <= 0) {
       reply = `สรุปยอด: ${userB.displayName} ต้องจ่ายให้ ${userA.displayName} ${formatAmount(summaryB)} บาท`;
       notification = buildSettlementNotification(summary, users);
@@ -38,10 +44,14 @@ async function handleSummary() {
       notification = buildSettlementNotification(summary, users);
     }
     if (notification) {
-      notification.expenseLines = expenses.map((e) => `• ${e.description} ${Number(e.amount).toLocaleString()} บาท`);
+      notification.expenseLines = expenseLines;
     }
     if (!notification && summaryA !== 0 && summaryB !== 0) {
       reply = `สรุปยอด: ${userA.displayName} ${summaryA >= 0 ? 'ได้รับ' : 'ต้องจ่าย'} ${formatAmount(summaryA)} บาท, ${userB.displayName} ${summaryB >= 0 ? 'ได้รับ' : 'ต้องจ่าย'} ${formatAmount(summaryB)} บาท`;
+    }
+
+    if (expenseLines.length) {
+      reply += `\n\nรายการ (${activeExpenses.length}):\n${expenseLines.join('\n')}`;
     }
 
     const prompt = notification ? '\n\nต้องการเรียกเก็บเงินเลยไหม? พิมพ์ ใช่ หรือ เรียกเก็บเงิน' : '';
