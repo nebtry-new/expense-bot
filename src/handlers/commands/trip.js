@@ -1,6 +1,7 @@
 const { createTrip, getTrips, getExpensesByTrip, findTripByName, getUsers, addTripPlace, getTripPlaces, deleteTripPlace, markTripPlaceVisited, addTripNote, getTripNotes } = require('../../services/db');
 const { fetchPageTitle } = require('../../utils/fetch-title');
 const { calculateBalances } = require('../../utils/balance');
+const { formatExpenseLines } = require('../../utils/format');
 const { parseTripCreation, formatSplitMode } = require('../../utils/parser');
 const { buildSettlementNotification } = require('./settlement');
 const { settlementState } = require('../state');
@@ -108,7 +109,7 @@ async function handleTripSummary(name) {
       notification = buildSettlementNotification(balances, users);
       if (notification) {
         notification.tripName = trip.name;
-        notification.expenseLines = tripExpenses.map((e) => `• ${e.description} ${Number(e.amount).toLocaleString()} บาท`);
+        notification.expenseLines = formatExpenseLines(tripExpenses);
       }
     }
   }

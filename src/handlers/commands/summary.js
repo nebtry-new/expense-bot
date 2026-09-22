@@ -1,11 +1,13 @@
-const { getUsers, getExpenses } = require('../../services/db');
+const { getUsers, getExpenses, getTrips } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
+const { formatExpenseLines } = require('../../utils/format');
 const { buildSettlementNotification } = require('./settlement');
 const { settlementState } = require('../state');
 
 async function handleSummary() {
   const users = await getUsers();
   const expenses = await getExpenses();
+  const trips = await getTrips();
 
   if (!users.length) {
     return { type: 'summary', reply: 'ยังไม่มีผู้ใช้ในระบบ กรุณาลงทะเบียนก่อน เช่น ลงทะเบียน ปิ๊ก' };
@@ -30,11 +32,9 @@ async function handleSummary() {
     let reply;
     let notification = null;
 
+    const tripsMap = Object.fromEntries(trips.map((t) => [t.id, t.name]));
     const activeExpenses = expenses.filter((e) => !e.isCleared && e.splitMode !== 'none');
-    const expenseLines = activeExpenses.map((e) => {
-      const tag = e.tripId ? ' 🗺' : '';
-      return `• ${e.description}${tag} ${Number(e.amount).toLocaleString()} บาท`;
-    });
+    const expenseLines = formatExpenseLines(activeExpenses, { tripsMap });
 
     if (summaryA >= 0 && summaryB <= 0) {
       reply = `สรุปยอด: ${userB.displayName} ต้องจ่ายให้ ${userA.displayName} ${formatAmount(summaryB)} บาท`;
