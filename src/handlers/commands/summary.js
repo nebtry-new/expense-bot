@@ -36,7 +36,11 @@ async function handleSummary() {
     } else if (summaryB >= 0 && summaryA <= 0) {
       reply = `สรุปยอด: ${userA.displayName} ต้องจ่ายให้ ${userB.displayName} ${formatAmount(summaryA)} บาท`;
       notification = buildSettlementNotification(summary, users);
-    } else {
+    }
+    if (notification) {
+      notification.expenseLines = expenses.map((e) => `• ${e.description} ${Number(e.amount).toLocaleString()} บาท`);
+    }
+    if (!notification && summaryA !== 0 && summaryB !== 0) {
       reply = `สรุปยอด: ${userA.displayName} ${summaryA >= 0 ? 'ได้รับ' : 'ต้องจ่าย'} ${formatAmount(summaryA)} บาท, ${userB.displayName} ${summaryB >= 0 ? 'ได้รับ' : 'ต้องจ่าย'} ${formatAmount(summaryB)} บาท`;
     }
 
