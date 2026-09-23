@@ -3,6 +3,9 @@ const { calculateBalances } = require('../../utils/balance');
 const { settlementState, paymentConfirmState, deleteConfirmState, slipConfirmState } = require('../state');
 const { handleSlipConfirm } = require('./slip');
 
+// เก็บยอดที่ตกลงกันไว้ (creditor กด ใช่) เพื่อให้ debtor ใช้ตอนกด จ่ายแล้ว
+const agreedAmountByDebtor = {};
+
 function buildSettlementNotification(summary, users) {
   if (!Array.isArray(users) || users.length !== 2) return null;
 
@@ -53,7 +56,10 @@ async function handlePaymentSent(userContext) {
     return { type: 'error', reply: 'ไม่พบผู้รับเงินในระบบ' };
   }
 
-  const amount = Math.abs(currentBalance);
+  const agreedAmount = agreedAmountByDebtor[currentLineUserId];
+  const amount = agreedAmount ?? Math.abs(currentBalance);
+  delete agreedAmountByDebtor[currentLineUserId];
+
   const pending = {
     debtorName: currentUser.displayName,
     debtorLineUserId: currentUser.lineUserId,
@@ -125,6 +131,10 @@ async function handleConfirmYes(userContext) {
   }
 
   delete settlementState.pendingByUser[currentLineUserId];
+
+  if (pending.debtorLineUserId) {
+    agreedAmountByDebtor[pending.debtorLineUserId] = pending.amount;
+  }
 
   return {
     type: 'settlement_trigger',
