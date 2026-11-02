@@ -123,3 +123,12 @@ test('in-process scheduler starts unless NOTIFICATION_POLL_MS=0', () => {
   clearInterval(timer);
   delete process.env.NOTIFICATION_POLL_MS;
 });
+
+test('"ตรวจแจ้งเตือน" reports scheduler state, own pending and overdue counts', async () => {
+  await setup();
+  await scheduleNotification({ message: 'เลยเวลา', scheduledAt: PAST(), lineUserId: 'u1' });
+  const r = await handleTextMessage('ตรวจแจ้งเตือน', { lineUserId: 'u1' });
+  assert.equal(r.type, 'notification_status');
+  assert.ok(r.reply.includes('ถึงเวลาแล้วแต่ยังไม่ส่ง (ทั้งระบบ): 1'), r.reply);
+  assert.ok(r.reply.includes('ฐานข้อมูล:'));
+});

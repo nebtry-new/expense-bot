@@ -1,4 +1,5 @@
-const { scheduleNotification, listPendingNotifications, cancelNotificationById } = require('../../services/db');
+const { scheduleNotification, listPendingNotifications, getPendingNotifications, cancelNotificationById, getDbStatus } = require('../../services/db');
+const { schedulerStatus } = require('../../services/notifications');
 const { parseNotificationInput, toLocalDisplay } = require('../../utils/parse-date');
 const { parseRelativeReminder } = require('../../utils/relative-time');
 
@@ -109,4 +110,21 @@ async function handleCancelNotification(input, lineUserId) {
   return { type: 'notification_cancelled', reply: `ยกเลิกแจ้งเตือน "${target.message}" แล้ว` };
 }
 
-module.exports = { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification };
+// ตรวจว่าระบบแจ้งเตือนทำงานอยู่ไหม — ใช้ไล่ปัญหา "ตั้งแล้วไม่เตือน"
+async function handleNotificationStatus(lineUserId) {
+  const [mine, due] = await Promise.all([listPendingNotifications({ lineUserId }), getPendingNotifications()]);
+  const s = schedulerStatus;
+  const ago = (iso) => (iso ? `${Math.round((Date.now() - new Date(iso).getTime()) / 1000)} วินาทีที่แล้ว` : 'ยังไม่เคย');
+  const lines = [
+    '🔧 สถานะระบบแจ้งเตือน',
+    `ตัวรันในเซิร์ฟเวอร์: ${s.started ? `ทำงาน (ทุก ${Math.round(s.intervalMs / 1000)} วิ)` : 'ไม่ได้ทำงาน ❌'}`,
+    `เริ่มเมื่อ: ${s.startedAt ? toLocalDisplay(new Date(s.startedAt)) + ' น.' : '-'}`,
+    `รันล่าสุด: ${ago(s.lastRunAt)}${s.lastResult ? ` (ส่งได้ ${s.lastResult.sent}, ล้มเหลว ${s.lastResult.failed})` : ''}`,
+    s.lastError ? `error ล่าสุด: ${s.lastError}` : null,
+    `ฐานข้อมูล: ${getDbStatus().mode}`,
+    `แจ้งเตือนที่รออยู่ของคุณ: ${mine.length} · ถึงเวลาแล้วแต่ยังไม่ส่ง (ทั้งระบบ): ${due.length}`,
+  ].filter(Boolean);
+  return { type: 'notification_status', reply: lines.join('\n') };
+}
+
+module.exports = { handleNotificationStatus, handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification };

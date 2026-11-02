@@ -3,7 +3,7 @@ const line = require('@line/bot-sdk');
 const dotenv = require('dotenv');
 const { handleTextMessage } = require('./handlers/text');
 const { getUsers, getExpenses, getDbStatus } = require('./services/db');
-const { runPendingNotifications } = require('./services/notifications');
+const { runPendingNotifications, schedulerStatus } = require('./services/notifications');
 const { analyzeSlip } = require('./services/claude');
 const { slipConfirmState } = require('./handlers/state');
 const { handleLocationForEv } = require('./handlers/commands/ev');
@@ -239,16 +239,31 @@ app.post('/webhook', async (req, res) => {
 // ปิดได้ด้วย NOTIFICATION_POLL_MS=0
 function startNotificationScheduler() {
   const intervalMs = Number(process.env.NOTIFICATION_POLL_MS ?? 60000);
-  if (!(intervalMs > 0)) return null;
+  if (!(intervalMs > 0)) {
+    console.log('NOTIFICATION_SCHEDULER disabled (NOTIFICATION_POLL_MS=0)');
+    return null;
+  }
+
+  schedulerStatus.started = true;
+  schedulerStatus.intervalMs = intervalMs;
+  schedulerStatus.startedAt = new Date().toISOString();
+  console.log('NOTIFICATION_SCHEDULER started', { intervalMs, db: getDbStatus().mode });
 
   let running = false;
+  const heartbeatEvery = Math.max(1, Math.round((10 * 60 * 1000) / intervalMs)); // ~10 นาที
   const timer = setInterval(async () => {
     if (running) return;
     running = true;
     try {
       const result = await runPendingNotifications(sendPushMessage);
+      schedulerStatus.lastRunAt = new Date().toISOString();
+      schedulerStatus.lastResult = result;
+      schedulerStatus.lastError = null;
+      schedulerStatus.runs += 1;
       if (result.sent || result.failed) console.log('NOTIFICATIONS_RUN', result);
+      else if (schedulerStatus.runs % heartbeatEvery === 0) console.log('NOTIFICATION_SCHEDULER alive', { runs: schedulerStatus.runs });
     } catch (error) {
+      schedulerStatus.lastError = error.message;
       console.error('NOTIFICATIONS_RUN_FAILED', error.message);
     } finally {
       running = false;

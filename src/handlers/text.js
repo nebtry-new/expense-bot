@@ -4,7 +4,7 @@ const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('
 const { handleListUnrecognized, handleNaturalLanguageExpense, handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
 const { handleCreateTrip, handleListTrips, handleTripSummary, handleSetTripBillable, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
-const { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification } = require('./commands/notifications');
+const { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification, handleNotificationStatus } = require('./commands/notifications');
 const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
 const { normalizeThaiNumbers } = require('../utils/thai-numbers');
@@ -66,6 +66,7 @@ const HELP_TEXT = [
   '• พูดแบบคน: เตือนพรุ่งนี้บ่ายสาม ซื้อนม / เตือนอีก 2 ชั่วโมง เอาผ้าออก / เตือนวันศุกร์หน้า 9 โมงเช้า โทรหาแม่',
   '• แจ้งทั้งคู่: เติม ทั้งคู่ หรือ #ชื่อทริป ท้ายข้อความ',
   '• ดูที่รออยู่: ดูแจ้งเตือน',
+  '• ตั้งแล้วไม่เตือน? ตรวจระบบ: ตรวจแจ้งเตือน',
   '• ยกเลิก: ยกเลิกแจ้งเตือน [เลข]',
   '',
   '━━ 🔌 EV ━━',
@@ -87,7 +88,7 @@ const YES_RE = /^(ใช่|yes|ok|เรียกเก็บเงิน)$/i;
 const CANCEL_RE = /^(ยกเลิก|cancel|ไม่เอา)$/i;
 const MAPS_URL_RE = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/;
 // Commands that never belong to a free-text flow (datetime picker reply)
-const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+|ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
+const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+|ตรวจแจ้งเตือน|สถานะแจ้งเตือน|ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
 
 // ประโยคที่บอกว่าใครจ่าย/เลี้ยงใคร parser เดิมอ่านไม่ออก (มันเห็นแค่ "ชื่อ + ตัวเลข") → ให้ Claude ตีความก่อน
 const NL_CUE_RE = /(ออกให้|เลี้ยง|จ่ายแทน|แฟนออก|แฟนจ่าย|ออกค่า|จ่ายให้|โอนให้|ยืม|คืน|ทด(?:ให้|ไว้|ก่อน)|สำรอง|ฝากจ่าย|ฝากซื้อ|ต้องคืน|ขอคืน)/;
@@ -345,6 +346,10 @@ async function handleTextMessage(text, userContext = {}) {
   const remindMatch = normalized.match(/^เตือน\s*(.+)$/i);
   if (remindMatch) {
     return handleScheduleNotification(remindMatch[1].trim(), lineUserId);
+  }
+
+  if (/^(ตรวจแจ้งเตือน|สถานะแจ้งเตือน)$/i.test(normalized)) {
+    return handleNotificationStatus(lineUserId);
   }
 
   if (/^ดูแจ้งเตือน$/i.test(normalized)) {

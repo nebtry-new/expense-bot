@@ -3,6 +3,9 @@ const { getPendingNotifications, claimNotification, releaseNotification, getUser
 const MAX_ATTEMPTS = 5;
 const attempts = new Map(); // notification id → จำนวนครั้งที่ส่งไม่สำเร็จ (ในหน่วยความจำ)
 
+// สถานะตัวรันในตัวเซิร์ฟเวอร์ (index.js เป็นคนอัปเดต) — ไว้ตรวจด้วยคำสั่ง "ตรวจแจ้งเตือน"
+const schedulerStatus = { started: false, intervalMs: null, startedAt: null, lastRunAt: null, lastResult: null, lastError: null, runs: 0 };
+
 function __resetAttempts() {
   attempts.clear();
 }
@@ -58,4 +61,4 @@ async function runPendingNotifications(sendPushFn) {
   return { sent, failed, skipped };
 }
 
-module.exports = { runPendingNotifications, MAX_ATTEMPTS, __resetAttempts };
+module.exports = { runPendingNotifications, schedulerStatus, MAX_ATTEMPTS, __resetAttempts };
