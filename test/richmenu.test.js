@@ -6,7 +6,7 @@ const path = require('node:path');
 const { buildRichMenus, BUTTONS, WIDTH, HEIGHT, ALIAS_MAIN, ALIAS_MORE, NAME_PREFIX } = require('../src/richmenu/definitions');
 const { handleMenuPostback, MENU_QUESTIONS, MAX_QUICK_REPLIES, MAX_LABEL } = require('../src/handlers/commands/menu');
 const { handleTextMessage } = require('../src/handlers/text');
-const { resetData, registerUser, createTrip, addTripPlace, getTripPlaces } = require('../src/services/db');
+const { resetData, registerUser, createTrip, addTripPlace, getTripPlaces, listOpenTodos, getExpenses } = require('../src/services/db');
 const { __setInterpreter, __resetRateLimit } = require('../src/services/nl-intent');
 const { clearAllState } = require('../src/handlers/state');
 const { inspectPng } = require('../scripts/richmenu');
@@ -88,9 +88,16 @@ test('rich menu: message buttons send commands the bot really understands', asyn
 
 // ---------- postback จากเมนู ----------
 
+const CANCEL = 'action=menu_cancel';
+const body = (m) => m.quickReply.items.filter((i) => i.action.data !== CANCEL); // ปุ่มของเมนู ไม่รวม ✖ ยกเลิก
+
 function assertValidQuickReply(message) {
   const items = message.quickReply.items;
-  assert.ok(items.length >= 1 && items.length <= MAX_QUICK_REPLIES);
+  assert.ok(items.length >= 2 && items.length <= MAX_QUICK_REPLIES);
+  // ทุกเมนูย่อยมี ✖ ยกเลิก เป็นปุ่มสุดท้ายเสมอ
+  assert.equal(items.at(-1).action.data, CANCEL);
+  assert.equal(items.at(-1).action.label, '✖ ยกเลิก');
+  assert.equal(items.filter((i) => i.action.data === CANCEL).length, 1);
   for (const item of items) {
     assert.equal(item.type, 'action');
     assert.ok([...item.action.label].length <= MAX_LABEL, item.action.label);
@@ -103,7 +110,7 @@ test('menu_money shows the current balance and offers the existing money command
   const m = await handleMenuPostback('action=menu_money', u1);
   assert.ok(m.text.includes('แจม ต้องจ่ายให้ ปิ๊ก 50'), m.text);
   assertValidQuickReply(m);
-  assert.deepEqual(m.quickReply.items.map((i) => i.action.text), ['เรียกเก็บเงิน', 'จ่ายแล้ว', 'รับแล้ว']);
+  assert.deepEqual(body(m).map((i) => i.action.text), ['เรียกเก็บเงิน', 'จ่ายแล้ว', 'รับแล้ว']);
 });
 
 test('menu_trip lists real trips as postback buttons (at most 8, labels truncated)', async () => {
@@ -111,7 +118,7 @@ test('menu_trip lists real trips as postback buttons (at most 8, labels truncate
   for (const name of ['หัวหิน', 'เชียงใหม่', 'ภูเก็ต', 'กระบี่', 'ทริปที่มีชื่อยาวมากๆๆๆๆๆๆๆๆๆๆๆๆๆๆๆๆ']) await createTrip(name);
   const m = await handleMenuPostback('action=menu_trip', u1);
   assertValidQuickReply(m);
-  const commands = m.quickReply.items.map((i) => i.action.text || i.action.fillInText);
+  const commands = body(m).map((i) => i.action.text || i.action.fillInText);
   const tripButtons = m.quickReply.items.filter((i) => i.action.type === 'postback' && i.action.data.startsWith('action=menu_trip_detail'));
   assert.equal(tripButtons.length, 5);
   assert.ok(commands.includes('ทริป') && commands.includes('สร้างทริป '));
@@ -119,7 +126,7 @@ test('menu_trip lists real trips as postback buttons (at most 8, labels truncate
   assert.ok(tripButtons.some((i) => i.action.displayText.includes('ชื่อยาว')));
 });
 
-const pbData = (m) => m.quickReply.items.map((i) => i.action.fillInText || i.action.data || i.action.text);
+const pbData = (m) => body(m).map((i) => i.action.fillInText || i.action.data || i.action.text);
 const tap = (m, labelPart) => m.quickReply.items.find((i) => i.action.label.includes(labelPart)).action.data;
 
 test('trip hub: สรุป/โน้ต/ที่เที่ยว/เส้นทาง/ปิดทริป/กลับ และสลับปิด↔เปิดตามสถานะ', async () => {
@@ -164,7 +171,7 @@ test('trip places sub menu: ไปแล้ว / ลบที่ ผ่านป
   const places = await handleMenuPostback(`action=menu_trip_places&id=${id}`, u1);
   assertValidQuickReply(places);
   assert.ok(places.text.includes('ร้านA') && places.text.includes('ร้านA2'));
-  const labels = places.quickReply.items.map((i) => i.action.label);
+  const labels = body(places).map((i) => i.action.label);
   assert.ok(labels.some((l) => l.includes('ไปแล้ว')) && labels.some((l) => l.includes('ลบที่')) && labels.some((l) => l.includes('เพิ่มที่เที่ยว')));
 
   const pick = await handleMenuPostback(tap(places, 'ไปแล้ว'), u1);
@@ -198,7 +205,7 @@ test('trip sub menu: ทริปที่ไม่มีที่เที่�
   await setup();
   const trip = await createTrip('ทริป เชียงใหม่');
   const m = await handleMenuPostback(`action=menu_trip_places&id=${encodeURIComponent(trip.id)}`, u1);
-  const labels = m.quickReply.items.map((i) => i.action.label);
+  const labels = body(m).map((i) => i.action.label);
   assert.ok(!labels.some((l) => l.includes('ไปแล้ว') || l.includes('ลบที่') || l.includes('เพิ่ม')), labels.join('|'));
   const notes = await handleMenuPostback(`action=menu_trip_notes&id=${encodeURIComponent(trip.id)}`, u1);
   assert.ok(!notes.quickReply.items.some((i) => i.action.label.includes('เพิ่ม')));
@@ -208,7 +215,7 @@ test('menu_ask / menu_ev / menu_record / unknown', async () => {
   await setup();
   const ask = await handleMenuPostback('action=menu_ask', u1);
   assertValidQuickReply(ask);
-  assert.deepEqual(ask.quickReply.items.map((i) => i.action.text), Object.keys(MENU_QUESTIONS));
+  assert.deepEqual(body(ask).map((i) => i.action.text), Object.keys(MENU_QUESTIONS));
 
   const ev = await handleMenuPostback('action=menu_ev', u1);
   assertValidQuickReply(ev);
@@ -222,7 +229,7 @@ test('menu_notify offers set/list notification commands the bot understands', as
   await setup();
   const m = await handleMenuPostback('action=menu_notify', u1);
   assertValidQuickReply(m);
-  assert.deepEqual(m.quickReply.items.map((i) => i.action.text), ['แจ้งเตือนใหม่', 'ดูแจ้งเตือน']);
+  assert.deepEqual(body(m).map((i) => i.action.text), ['แจ้งเตือนใหม่', 'ดูแจ้งเตือน']);
 });
 
 test('menu_todo / menu_events: empty state offers the add button; real lists add ✅/❌ buttons and stay within 13', async () => {
@@ -281,6 +288,56 @@ test('menu_events is a sub-menu (events + gifts); restaurants have their own but
   await handleTextMessage('ร้านไปแล้ว 1', u1);
   const some = await handleMenuPostback('action=menu_restaurant', u1);
   assert.ok(some.text.includes('ในลิสต์ 2 ร้าน (ยังไม่ได้ไป 1)'), some.text);
+});
+
+test('ทุกเมนูย่อยมีปุ่ม ✖ ยกเลิก เป็นปุ่มสุดท้าย ไม่เกิน 13 ปุ่ม แม้ลิสต์ยาว', async () => {
+  await setup();
+  const trip = await createTrip('หัวหิน');
+  const id = encodeURIComponent(trip.id);
+  for (let i = 1; i <= 15; i += 1) await addTripPlace(trip.id, `ร้าน${i}`);
+  for (let i = 1; i <= 15; i += 1) await handleTextMessage(`เพิ่มงาน งาน${i}`, u1);
+  await handleTextMessage('เพิ่มวันสำคัญ วันเกิดแฟน 15 ก.ค. 2536', u1);
+  await handleTextMessage('เพิ่มร้าน ราเมน', u1);
+
+  const postbacks = [
+    'action=menu_money', 'action=menu_trip', `action=menu_trip_detail&id=${id}`, `action=menu_trip_notes&id=${id}`,
+    `action=menu_trip_places&id=${id}`, `action=menu_trip_visit&id=${id}`, `action=menu_trip_del&id=${id}`,
+    'action=menu_ask', 'action=menu_ev', 'action=menu_notify', 'action=menu_todo', 'action=menu_events',
+    'action=menu_events_list', 'action=menu_restaurant',
+  ];
+  for (const data of postbacks) {
+    const m = await handleMenuPostback(data, u1);
+    assert.ok(m?.quickReply, `${data} ควรเป็นเมนูที่มีปุ่ม`);
+    assertValidQuickReply(m); // มี ✖ ยกเลิก เป็นปุ่มสุดท้าย + ไม่เกิน 13
+  }
+
+  // ลิสต์ยาว (15 รายการ) ยังเหลือปุ่ม กลับ + ยกเลิก ครบ
+  const visit = await handleMenuPostback(`action=menu_trip_visit&id=${id}`, u1);
+  assert.equal(visit.quickReply.items.length, MAX_QUICK_REPLIES);
+  assert.ok(body(visit).some((i) => i.action.data === 'action=menu_trip_places&id=' + id || i.action.label.includes('กลับ')));
+});
+
+test('menu_cancel: ตอบรับ ไม่ทำอะไรต่อ และล้างลิสต์/คำขอยืนยันที่ค้าง (ไม่แตะเรื่องเงิน)', async () => {
+  await setup();
+  await handleTextMessage('เพิ่มงาน ซื้อนม', u1);
+  await handleMenuPostback('action=menu_todo', u1);
+  await handleTextMessage('ค่าข้าว 100', u1);
+  await handleTextMessage('ลบรายการ', u1); // มีลิสต์ลบค้าง
+
+  const cancel = await handleMenuPostback('action=menu_cancel', u1);
+  assert.equal(cancel.type, 'text');
+  assert.ok(cancel.text.includes('ไม่ทำอะไรต่อ'));
+  assert.equal(cancel.quickReply, undefined); // ไม่เปิดเมนูซ้อนต่อ
+
+  // เลขที่พิมพ์หลังกดยกเลิกต้องไม่ไปทำกับลิสต์ที่ทิ้งไปแล้ว
+  assert.equal((await handleTextMessage('เสร็จ 1', u1)).type, 'noop');
+  assert.equal((await handleTextMessage('ลบ 1', u1)).type, 'noop');
+  assert.equal((await listOpenTodos()).length, 1);
+  assert.equal((await getExpenses()).length, 1);
+
+  // ไม่กระทบรายการของคนอื่น/เรื่องเงิน: u2 ยังทำงานกับลิสต์ของตัวเองได้
+  await handleTextMessage('งาน', { lineUserId: 'u2' });
+  assert.equal((await handleTextMessage('เสร็จ 1', { lineUserId: 'u2' })).type, 'todo_done');
 });
 
 // ---------- คำถามจากเมนูไม่ต้องใช้โมเดล ----------

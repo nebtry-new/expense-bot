@@ -4,6 +4,7 @@ const { getTrips, listRestaurants, getTripPlaces, markTripPlaceVisitedById, dele
 const { handleListNotes, handleListPlaces } = require('./trip');
 const { handleListTodos, handleListEvents } = require('./planner');
 const { answerForUser } = require('./nl-dispatch');
+const { deleteListState, deleteConfirmState, nlCommandState, notifListState, eventListState, todoListState, restaurantListState, restaurantPickState, wishListState, partnerWishState } = require('../state');
 
 const MAX_QUICK_REPLIES = 13;
 const MAX_LABEL = 20;
@@ -37,13 +38,24 @@ const postbackItem = (label, data, displayText = label) => ({
 const isTaggable = (name) => /^[฀-๿a-zA-Z0-9_]+$/.test(name);
 
 const MAX_TRIP_BUTTONS = 8;
-const MAX_PLACE_BUTTONS = 12; // + ปุ่ม กลับ = 13
+const MAX_PLACE_BUTTONS = 11; // + ปุ่ม กลับ + ปุ่ม ยกเลิก = 13
+
+// ทุกเมนูย่อยมีปุ่ม ✖ ยกเลิก เป็นปุ่มสุดท้าย (กันคนงงถ้าไม่อยากทำอะไรต่อ) — กันที่ไว้ 1 ช่องจากขีดจำกัด 13
+const CANCEL_DATA = 'action=menu_cancel';
+const cancelItem = () => postbackItem('✖ ยกเลิก', CANCEL_DATA, 'ยกเลิก');
 
 const withQuickReplies = (text, items) => ({
   type: 'text',
   text,
-  quickReply: { items: items.slice(0, MAX_QUICK_REPLIES) },
+  quickReply: { items: [...items.slice(0, MAX_QUICK_REPLIES - 1), cancelItem()] },
 });
+
+// ยกเลิก = ไม่ทำอะไรต่อ: ล้างลิสต์/คำขอยืนยันที่ค้างจากเมนู เพื่อไม่ให้เลขที่พิมพ์ทีหลังไปทำกับรายการที่ทิ้งไปแล้ว
+// (ไม่แตะ flow เรื่องเงิน/สลิป/EV ที่เป็นงานของตัวเอง)
+const CANCELLABLE_STATES = [deleteListState, deleteConfirmState, nlCommandState, notifListState, eventListState, todoListState, restaurantListState, restaurantPickState, wishListState, partnerWishState];
+function clearMenuState(lineUserId) {
+  for (const state of CANCELLABLE_STATES) delete state.pendingByUser[lineUserId];
+}
 
 const tripPb = (action, trip, extra = '') => `action=${action}&id=${encodeURIComponent(trip.id)}${extra}`;
 const backToHub = (trip) => postbackItem('← กลับ', tripPb('menu_trip_detail', trip), `กลับ ${trip.name}`);
@@ -132,6 +144,11 @@ async function handleMenuPostback(data, userContext = {}) {
   const params = new URLSearchParams(String(data || ''));
   const action = params.get('action') || '';
 
+  if (action === 'menu_cancel') {
+    clearMenuState(userContext.lineUserId || 'unknown');
+    return { type: 'text', text: 'โอเค ไม่ทำอะไรต่อ 👍\nแตะเมนูด้านล่างได้เสมอเมื่อต้องการ' };
+  }
+
   if (action === 'menu_record') {
     // ถ้า LINE ส่ง event มาหลังเปิดคีย์บอร์ด ให้ตัวอย่างสั้นๆ (ถ้าไม่ส่งมา ก็ไม่เสียหาย)
     return { type: 'text', text: 'พิมพ์ได้เลย เช่น\n• ค่าข้าว 350\n• ค่าโรงแรม 1200 ฉัน 400 แฟน 800\n• เลี้ยงข้าวแฟน 450\n• ปิ๊กยืมแจม 500\nหรือส่งรูป slip มาได้เลย 📸' };
@@ -191,7 +208,7 @@ async function handleMenuPostback(data, userContext = {}) {
     const todo = action === 'menu_todo';
     const result = await (todo ? handleListTodos : handleListEvents)(userContext.lineUserId || 'unknown');
     const add = todo ? fillItem('➕ เพิ่มงาน', 'เพิ่มงาน ') : fillItem('➕ เพิ่มวันสำคัญ', 'เพิ่มวันสำคัญ ');
-    return withQuickReplies(result.reply, [add, ...(result.quickReplies || []).map((q) => sayItem(q.label, q.text))]);
+    return withQuickReplies(result.reply, [add, ...(result.quickReplies || []).slice(0, MAX_QUICK_REPLIES - 2).map((q) => sayItem(q.label, q.text))]);
   }
 
   if (action === 'menu_restaurant') {
