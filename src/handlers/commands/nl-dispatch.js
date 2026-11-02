@@ -68,6 +68,7 @@ async function dispatchReminder(other, userContext, now) {
   return {
     type: 'notification_set',
     reply: `⏰ ตั้งแจ้งเตือน ${other.both ? '(ทั้งคู่)' : '(เฉพาะคุณ)'}: ${toLocalDisplay(scheduledAt)} น.\n"${other.message}"\n(ตีความจากข้อความ ดูได้ที่ ดูแจ้งเตือน)`,
+    quickReplies: [{ label: '➕ ตั้งแจ้งเตือนอีก', fillIn: 'เตือน ' }, { label: '📋 ดูแจ้งเตือน', text: 'ดูแจ้งเตือน' }],
   };
 }
 

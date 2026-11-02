@@ -6,6 +6,9 @@ const { localToday } = require('../../utils/planner-dates');
 const { MONTH_LABELS } = require('../../utils/parse-date');
 
 const MAX_BUTTONS = 12;
+const ADD_MORE_WISH = { label: '➕ อยากได้อีก', fillIn: 'อยากได้ ' };
+const ADD_MORE_GIFT = { label: '🎀 เพิ่มของขวัญอีก', fillIn: 'ให้ของขวัญแฟน ' };
+
 const MIGRATION_HINT = 'ยังใช้ฟีเจอร์นี้ไม่ได้ — ต้องรัน supabase/migration_013_restaurants_gifts.sql ใน Supabase ก่อน';
 
 async function guarded(fn) {
@@ -56,11 +59,11 @@ function handleAddWish(input, lineUserId) {
     const { me, partner } = await couple(lineUserId);
     if (!me) return { type: 'error', reply: 'ไม่พบผู้ใช้ในระบบ กรุณาลงทะเบียนก่อน' };
     const { title, price } = parseTitlePrice(input);
-    if (!title) return { type: 'error', reply: 'ระบุของที่อยากได้ด้วย เช่น อยากได้ หูฟังไร้สาย 3500' };
+    if (!title || /^[\d,.\s฿]+(?:บาท)?$/.test(title)) return { type: 'error', reply: 'ระบุชื่อของที่อยากได้ด้วย เช่น อยากได้ หูฟังไร้สาย 3500', quickReplies: [{ label: '➕ ลองใหม่', fillIn: 'อยากได้ ' }] };
 
     const mine = await listWishItems({ ownerLineUserId: lineUserId });
     const dup = mine.find((w) => similar(w.title, title));
-    if (dup) return { type: 'noop', reply: `มีใน wishlist แล้ว: ${dup.title}${fmtPrice(dup.price)}`, quickReplies: [{ label: '✨ ดู wishlist', text: 'ของที่อยากได้' }] };
+    if (dup) return { type: 'noop', reply: `มีใน wishlist แล้ว: ${dup.title}${fmtPrice(dup.price)}`, quickReplies: [ADD_MORE_WISH, { label: '✨ ดู wishlist', text: 'ของที่อยากได้' }] };
 
     await addWishItem({ ownerLineUserId: lineUserId, title, price });
     const lines = [`✨ จดไว้แล้ว: ${title}${fmtPrice(price)}`];
@@ -69,7 +72,7 @@ function handleAddWish(input, lineUserId) {
       const received = (await listGifts({ recipientLineUserId: lineUserId })).find((g) => similar(g.title, title));
       if (received) lines.push(`⚠️ เคยได้รับ "${received.title}" ไปแล้วเมื่อ ${thaiDay(received.createdAt)}`);
     }
-    return { type: 'wish_added', reply: lines.join('\n'), quickReplies: [{ label: '✨ ดู wishlist', text: 'ของที่อยากได้' }] };
+    return { type: 'wish_added', reply: lines.join('\n'), quickReplies: [ADD_MORE_WISH, { label: '✨ ดู wishlist', text: 'ของที่อยากได้' }] };
   });
 }
 
@@ -193,7 +196,7 @@ function handleConfirmGift(lineUserId) {
     return {
       type: 'gift_given',
       reply: [`🎁 บันทึกแล้ว: ให้ ${partner.displayName} — ${title}${fmtPrice(price)}`, 'ถ้าต้องการบันทึกเป็นค่าใช้จ่ายด้วย พิมพ์ เช่น ค่าของขวัญ 1200 ส่วนตัว'].join('\n'),
-      quickReplies: [{ label: '📜 ประวัติของขวัญ', text: 'ประวัติของขวัญ' }],
+      quickReplies: [ADD_MORE_GIFT, { label: '📜 ประวัติของขวัญ', text: 'ประวัติของขวัญ' }],
     };
   });
 }

@@ -18,18 +18,20 @@ async function handleCategorize() {
   return { type: 'categorize', reply: lines.join('\n') };
 }
 
+const RETRY_BUDGET = [{ label: '➕ ลองใหม่', fillIn: 'ตั้งงบ ' }];
+
 async function handleSetBudget(args) {
   const m = String(args || '').trim().match(/^(.+?)\s+([\d,]+(?:\.\d+)?)\s*(?:บาท)?$/);
-  if (!m) return { type: 'error', reply: `รูปแบบ: ตั้งงบ [หมวด] [จำนวนต่อเดือน] เช่น ตั้งงบ อาหาร 5000\nหมวด: ${categoryList()}` };
+  if (!m) return { type: 'error', reply: `รูปแบบ: ตั้งงบ [หมวด] [จำนวนต่อเดือน] เช่น ตั้งงบ อาหาร 5000\nหมวด: ${categoryList()}`, quickReplies: RETRY_BUDGET };
   const key = resolveCategory(m[1]);
-  if (!key || key === 'other') return { type: 'error', reply: `ไม่รู้จักหมวด "${m[1]}"\nหมวดที่ตั้งงบได้: ${categoryList()}` };
+  if (!key || key === 'other') return { type: 'error', reply: `ไม่รู้จักหมวด "${m[1]}"\nหมวดที่ตั้งงบได้: ${categoryList()}`, quickReplies: RETRY_BUDGET };
   const limit = Number(m[2].replace(/,/g, ''));
-  if (!(limit > 0)) return { type: 'error', reply: 'งบต้องมากกว่า 0' };
+  if (!(limit > 0)) return { type: 'error', reply: 'งบต้องมากกว่า 0', quickReplies: RETRY_BUDGET };
   await setCategoryBudget(key, limit);
   return {
     type: 'budget_set',
     reply: `ตั้งงบหมวด${categoryLabel(key)} เดือนละ ${fmt(limit)} บาทแล้ว\nบอตจะเตือนเมื่อใช้ถึง ${Math.round(WARN_RATIO * 100)}% และเมื่อเกินงบ`,
-    quickReplies: [{ label: '💰 ดูงบ', text: 'ดูงบ' }],
+    quickReplies: [{ label: '➕ ตั้งงบอีก', fillIn: 'ตั้งงบ ' }, { label: '💰 ดูงบ', text: 'ดูงบ' }],
   };
 }
 

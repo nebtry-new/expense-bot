@@ -4,6 +4,14 @@ const { schedulerStatus } = require('../../services/notifications');
 const { parseNotificationInput, toLocalDisplay } = require('../../utils/parse-date');
 const { parseRelativeReminder } = require('../../utils/relative-time');
 
+// หลังตั้งแจ้งเตือน: ปุ่มตั้งต่อเนื่อง (เปิดคีย์บอร์ดพร้อม "เตือน ") + เลือกจากปฏิทิน + ดูที่รออยู่
+const AFTER_SET_REPLIES = [
+  { label: '➕ ตั้งแจ้งเตือนอีก', fillIn: 'เตือน ' },
+  { label: '📅 เลือกจากปฏิทิน', text: 'แจ้งเตือนใหม่' },
+  { label: '📋 ดูแจ้งเตือน', text: 'ดูแจ้งเตือน' },
+];
+const RETRY_NOTIF = [{ label: '➕ ลองใหม่', fillIn: 'เตือน ' }];
+
 function handleShowDatetimePicker() {
   const now = new Date();
   const localNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
@@ -38,7 +46,7 @@ async function handleScheduleFromDatetime(message, scheduledAt, lineUserId) {
   const cleanMessage = message.replace(BROADCAST_KW, '').trim();
 
   if (!cleanMessage) {
-    return { type: 'error', reply: 'ระบุข้อความแจ้งเตือนด้วย' };
+    return { type: 'error', reply: 'ระบุข้อความแจ้งเตือนด้วย', quickReplies: RETRY_NOTIF };
   }
 
   await scheduleNotification({ message: cleanMessage, scheduledAt, lineUserId: broadcast ? null : lineUserId });
@@ -46,6 +54,7 @@ async function handleScheduleFromDatetime(message, scheduledAt, lineUserId) {
   return {
     type: 'notification_set',
     reply: `⏰ ตั้งแจ้งเตือน ${scope}: ${toLocalDisplay(scheduledAt)} น.\n"${cleanMessage}"`,
+    quickReplies: AFTER_SET_REPLIES,
   };
 }
 
@@ -59,18 +68,18 @@ async function handleScheduleNotification(input, lineUserId) {
   if (!parsed) {
     // พูดแบบคน: "พรุ่งนี้บ่ายสามซื้อนม", "อีก 2 ชั่วโมง ...", "วันศุกร์หน้า 9 โมงเช้า ..."
     const rel = parseRelativeReminder(cleanInput);
-    if (rel?.error === 'past') return { type: 'error', reply: 'วันเวลาที่ระบุผ่านไปแล้ว กรุณาระบุเวลาในอนาคต' };
-    if (rel?.error === 'no_message') return { type: 'error', reply: 'ระบุข้อความที่จะให้เตือนด้วย เช่น เตือนพรุ่งนี้บ่ายสาม ซื้อนม' };
-    if (rel?.error === 'bad_time') return { type: 'error', reply: 'เวลาไม่ถูกต้อง' };
+    if (rel?.error === 'past') return { type: 'error', reply: 'วันเวลาที่ระบุผ่านไปแล้ว กรุณาระบุเวลาในอนาคต', quickReplies: RETRY_NOTIF };
+    if (rel?.error === 'no_message') return { type: 'error', reply: 'ระบุข้อความที่จะให้เตือนด้วย เช่น เตือนพรุ่งนี้บ่ายสาม ซื้อนม', quickReplies: RETRY_NOTIF };
+    if (rel?.error === 'bad_time') return { type: 'error', reply: 'เวลาไม่ถูกต้อง', quickReplies: RETRY_NOTIF };
     if (rel?.scheduledAt) parsed = rel;
   }
   if (!parsed) {
-    return { type: 'error', reply: 'อ่านวันเวลาไม่ออก ลองพิมพ์ เช่น เตือนพรุ่งนี้บ่ายสาม ซื้อนม หรือ แจ้งเตือน 25 ธ.ค. 09:00 เช็คกระเป๋า' };
+    return { type: 'error', reply: 'อ่านวันเวลาไม่ออก ลองพิมพ์ เช่น เตือนพรุ่งนี้บ่ายสาม ซื้อนม หรือ แจ้งเตือน 25 ธ.ค. 09:00 เช็คกระเป๋า', quickReplies: RETRY_NOTIF };
   }
 
   const { scheduledAt, message } = parsed;
   if (scheduledAt < new Date()) {
-    return { type: 'error', reply: 'วันเวลาที่ระบุผ่านไปแล้ว กรุณาระบุวันในอนาคต' };
+    return { type: 'error', reply: 'วันเวลาที่ระบุผ่านไปแล้ว กรุณาระบุวันในอนาคต', quickReplies: RETRY_NOTIF };
   }
 
   await scheduleNotification({ message, scheduledAt, lineUserId: broadcast ? null : lineUserId });
@@ -78,6 +87,7 @@ async function handleScheduleNotification(input, lineUserId) {
   return {
     type: 'notification_set',
     reply: `⏰ ตั้งแจ้งเตือน ${scope}: ${toLocalDisplay(scheduledAt)} น.\n"${message}"`,
+    quickReplies: AFTER_SET_REPLIES,
   };
 }
 

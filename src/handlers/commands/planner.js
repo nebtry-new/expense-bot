@@ -6,6 +6,13 @@ const { MONTH_LABELS } = require('../../utils/parse-date');
 const { stagesToSkipOnCreate, EVENT_STAGES, TODO_STAGES, reminderHour } = require('../../services/planner-reminders');
 
 const MAX_BUTTONS = 12; // + ปุ่มเสริม = 13 (ขีดจำกัด quick reply)
+// ปุ่มเปิดคีย์บอร์ดพร้อมคำสั่งตั้งต้น — เพิ่มต่อเนื่องได้เรื่อยๆ (แบบเดียวกับ เพิ่มร้าน)
+const ADD_MORE_EVENT = { label: '➕ เพิ่มวันสำคัญอีก', fillIn: 'เพิ่มวันสำคัญ ' };
+const RETRY_EVENT = { label: '➕ ลองใหม่', fillIn: 'เพิ่มวันสำคัญ ' };
+
+const ADD_MORE_TODO = { label: '➕ เพิ่มงานอีก', fillIn: 'เพิ่มงาน ' };
+const RETRY_TODO = { label: '➕ ลองใหม่', fillIn: 'เพิ่มงาน ' };
+
 const MIGRATION_HINT = 'ยังใช้ฟีเจอร์นี้ไม่ได้ — ต้องรัน supabase/migration_012_events_todos.sql ใน Supabase ก่อน';
 
 // ตารางยังไม่ถูกสร้าง (ยังไม่รัน migration) → ตอบข้อความชัดเจน แทนที่จะ error เงียบ
@@ -46,10 +53,10 @@ function handleAddEvent(input, lineUserId) {
   return guarded(async () => {
     const usage = 'เพิ่มวันสำคัญ [ชื่อ] [วัน เดือน] เช่น เพิ่มวันสำคัญ วันเกิดแฟน 15 ก.ค. 2536 (ใส่ปีเกิด/ปีที่เริ่มจะบอกอายุ/ครบกี่ปี ไม่ใส่ปีก็ได้: 15 ก.ค.)';
     const md = extractMonthDay(input);
-    if (md?.error) return { type: 'error', reply: 'วันที่ไม่ถูกต้อง (เช่น 31 ก.พ.) ลองตรวจอีกครั้ง' };
-    if (!md) return { type: 'error', reply: `ไม่พบวันที่ — ${usage}` };
+    if (md?.error) return { type: 'error', reply: 'วันที่ไม่ถูกต้อง (เช่น 31 ก.พ.) ลองตรวจอีกครั้ง', quickReplies: [RETRY_EVENT] };
+    if (!md) return { type: 'error', reply: `ไม่พบวันที่ — ${usage}`, quickReplies: [RETRY_EVENT] };
     const title = md.text.replace(/^[\s:–-]+|[\s:–-]+$/g, '');
-    if (!title) return { type: 'error', reply: `ระบุชื่อวันสำคัญด้วย — ${usage}` };
+    if (!title) return { type: 'error', reply: `ระบุชื่อวันสำคัญด้วย — ${usage}`, quickReplies: [RETRY_EVENT] };
 
     const today = localToday();
     const occ = nextOccurrence(md.month, md.day, today);
@@ -64,7 +71,7 @@ function handleAddEvent(input, lineUserId) {
         `📅 ${md.day} ${MONTH_LABELS[md.month]}${md.year ? ` ${md.year + 543}` : ''} (ทุกปี) · ${whenLabel(daysUntil)}`,
         `จะเตือนทั้งคู่ล่วงหน้า 7 วัน, 1 วัน และวันจริง เวลา ${String(reminderHour()).padStart(2, '0')}:00 น.`,
       ].join('\n'),
-      quickReplies: [{ label: '📅 ดูวันสำคัญ', text: 'วันสำคัญ' }],
+      quickReplies: [ADD_MORE_EVENT, { label: '📅 ดูวันสำคัญ', text: 'วันสำคัญ' }],
     };
   });
 }
@@ -119,10 +126,10 @@ function handleAddTodo(input, lineUserId) {
   return guarded(async () => {
     const usage = 'เพิ่มงาน [ข้อความ] [วันครบกำหนด] เช่น เพิ่มงาน จองโรงแรม 25 ธ.ค. / เพิ่มงาน ซื้อนม พรุ่งนี้';
     const due = extractDueDate(input);
-    if (due.error === 'bad_date') return { type: 'error', reply: 'วันที่ไม่ถูกต้อง (เช่น 31 ก.พ.) ลองตรวจอีกครั้ง' };
-    if (due.error === 'past') return { type: 'error', reply: 'วันครบกำหนดผ่านไปแล้ว ระบุวันในอนาคต หรือไม่ใส่วันก็ได้' };
+    if (due.error === 'bad_date') return { type: 'error', reply: 'วันที่ไม่ถูกต้อง (เช่น 31 ก.พ.) ลองตรวจอีกครั้ง', quickReplies: [RETRY_TODO] };
+    if (due.error === 'past') return { type: 'error', reply: 'วันครบกำหนดผ่านไปแล้ว ระบุวันในอนาคต หรือไม่ใส่วันก็ได้', quickReplies: [RETRY_TODO] };
     const title = due.text.replace(/^[\s:–-]+|[\s:–-]+$/g, '');
-    if (!title) return { type: 'error', reply: `ระบุข้อความงานด้วย — ${usage}` };
+    if (!title) return { type: 'error', reply: `ระบุข้อความงานด้วย — ${usage}`, quickReplies: [RETRY_TODO] };
 
     const today = localToday();
     const dueParts = due.dueDate ? fromIso(due.dueDate) : null;
@@ -136,7 +143,7 @@ function handleAddTodo(input, lineUserId) {
         `📝 เพิ่มงาน: ${todo.title}`,
         dueParts ? `ครบกำหนด ${dateLabel(dueParts, dueParts.y !== today.y)} (${whenLabel(daysUntil)}) — จะเตือนทั้งคู่ ${String(reminderHour()).padStart(2, '0')}:00 น.` : 'ไม่มีกำหนดวัน',
       ].join('\n'),
-      quickReplies: [{ label: '📋 ดูงานทั้งหมด', text: 'งาน' }],
+      quickReplies: [ADD_MORE_TODO, { label: '📋 ดูงานทั้งหมด', text: 'งาน' }],
     };
   });
 }

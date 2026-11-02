@@ -4,6 +4,7 @@ const { handleTextMessage } = require('../src/handlers/text');
 const { resetData, registerUser, addSpecialEvent, listSpecialEvents, addTodo, listOpenTodos } = require('../src/services/db');
 const { clearAllState } = require('../src/handlers/state');
 const { extractDueDate, extractMonthDay, nextOccurrence, localToday } = require('../src/utils/planner-dates');
+const { toReplyPayload } = require('../src/utils/quick-reply');
 const { runEventReminders, runTodoReminders, runPlannerReminders, __setGreetingWriter } = require('../src/services/planner-reminders');
 
 const u1 = { lineUserId: 'u1' };
@@ -87,6 +88,30 @@ test('เพิ่มวันสำคัญ: ไม่มีวัน / ไม
   assert.equal((await handleTextMessage('เพิ่มวันสำคัญ ทดสอบ 31 ก.พ.', u1)).type, 'error');
   assert.equal((await listSpecialEvents()).length, 0);
   assert.equal((await handleTextMessage('ลบวันสำคัญ 1', u1)).type, 'noop');
+});
+
+test('เพิ่มวันสำคัญ: มีปุ่ม ➕ เพิ่มวันสำคัญอีก (เปิดคีย์บอร์ดพร้อม "เพิ่มวันสำคัญ ") เพิ่มต่อเนื่องได้ แม้ใส่ผิดก็มีปุ่มลองใหม่', async () => {
+  await setup();
+  const hasFill = (r) => r.quickReplies.some((q) => q.fillIn === 'เพิ่มวันสำคัญ ');
+
+  for (const t of ['เพิ่มวันสำคัญ วันเกิดแฟน 15 ก.ค. 2536', 'เพิ่มวันสำคัญ ครบรอบ 5/8', 'เพิ่มวันสำคัญ วันแม่ 12 ส.ค.']) {
+    const r = await handleTextMessage(t, u1);
+    assert.equal(r.type, 'event_added');
+    assert.equal(r.quickReplies[0].label, '➕ เพิ่มวันสำคัญอีก'); // เป็นปุ่มแรก ทุกครั้ง
+    assert.ok(hasFill(r));
+  }
+  assert.equal((await listSpecialEvents()).length, 3);
+
+  for (const bad of ['เพิ่มวันสำคัญ วันเกิดแฟน', 'เพิ่มวันสำคัญ 14 มี.ค.', 'เพิ่มวันสำคัญ ทดสอบ 31 ก.พ.']) {
+    const r = await handleTextMessage(bad, u1);
+    assert.equal(r.type, 'error');
+    assert.ok(hasFill(r), bad); // พิมพ์ผิดแล้วกดลองใหม่ได้เลย
+  }
+  assert.equal((await listSpecialEvents()).length, 3);
+
+  const items = toReplyPayload(await handleTextMessage('เพิ่มวันสำคัญ วันพ่อ 5 ธ.ค.', u1)).quickReply.items;
+  assert.deepEqual(items[0].action, { type: 'postback', label: '➕ เพิ่มวันสำคัญอีก', data: 'action=noop', inputOption: 'openKeyboard', fillInText: 'เพิ่มวันสำคัญ ' });
+  assert.equal(items.at(-1).action.data, 'action=menu_cancel');
 });
 
 // ---------- To-Do (คำสั่ง) ----------

@@ -153,6 +153,14 @@ async function handleTripSummary(name) {
   return { type: 'trip_summary', reply: lines.join('\n') + prompt, notification, ...(notification ? { quickReplies: BILLING_OFFER_REPLIES } : {}) };
 }
 
+// ชื่อทริปใช้เป็น #แท็ก ได้เฉพาะที่ไม่มีช่องว่าง/อักขระพิเศษ (ถ้าไม่ได้ จะไม่มีปุ่มเพิ่มต่อ)
+const isTaggable = (name) => /^[฀-๿a-zA-Z0-9_]+$/.test(String(name || ''));
+
+// ปุ่ม "เพิ่มอีก" เปิดคีย์บอร์ดพร้อมคำสั่ง + #ทริป ตั้งต้น → วางชื่อต่อได้ทันที เพิ่มต่อเนื่องได้เรื่อยๆ
+const addMoreReplies = (label, command, tripName, view) => (isTaggable(tripName)
+  ? [{ label, fillIn: `${command} #${tripName} ` }, view]
+  : [view]);
+
 async function handleAddPlace(input) {
   const parsed = parseAddPlaceInput(input);
   if (!parsed) {
@@ -160,6 +168,7 @@ async function handleAddPlace(input) {
   }
 
   let { tripName, notes, category, mapsUrl } = parsed;
+  const retryPlace = isTaggable(tripName) ? [{ label: '➕ ลองใหม่', fillIn: `เพิ่มที่ #${tripName} ` }] : undefined;
   let { name } = parsed;
 
   // Auto-fetch title from URL when no name given
@@ -168,12 +177,12 @@ async function handleAddPlace(input) {
     if (fetched) {
       name = fetched;
     } else {
-      return { type: 'error', reply: 'อ่านชื่อจาก link ไม่ได้ กรุณาพิมพ์ชื่อด้วย เช่น เพิ่มที่ ร้านต้มยำ | https://...' };
+      return { type: 'error', reply: 'อ่านชื่อจาก link ไม่ได้ กรุณาพิมพ์ชื่อด้วย เช่น เพิ่มที่ ร้านต้มยำ | https://...', quickReplies: retryPlace };
     }
   }
 
   if (!name) {
-    return { type: 'error', reply: 'ระบุชื่อสถานที่ด้วย เช่น เพิ่มที่ ร้านต้มยำ #หัวหิน' };
+    return { type: 'error', reply: 'ระบุชื่อสถานที่ด้วย เช่น เพิ่มที่ ร้านต้มยำ #หัวหิน', quickReplies: retryPlace };
   }
 
   const trip = await findTripByName(tripName);
@@ -187,7 +196,7 @@ async function handleAddPlace(input) {
   const lines = [`เพิ่ม "${name}" ในทริป ${trip.name} แล้ว`, `หมวด: ${catLabel}`];
   if (notes) lines.push(`📝 ${notes}`);
   if (mapsUrl) lines.push('📍 บันทึก link แผนที่แล้ว');
-  return { type: 'place_added', reply: lines.join('\n') };
+  return { type: 'place_added', reply: lines.join('\n'), quickReplies: addMoreReplies('➕ เพิ่มที่อีก', 'เพิ่มที่', trip.name, { label: '📍 ดูที่เที่ยว', text: `ที่เที่ยว ${trip.name}` }) };
 }
 
 async function handleDeletePlace(input) {
@@ -308,7 +317,7 @@ async function handleAddNote(input) {
     .map((s) => s.trim())
     .filter(Boolean);
 
-  if (!items.length) return { type: 'error', reply: 'ระบุเนื้อหา note ด้วย' };
+  if (!items.length) return { type: 'error', reply: 'ระบุเนื้อหา note ด้วย', quickReplies: isTaggable(tripName) ? [{ label: '➕ ลองใหม่', fillIn: `โน้ตทริป #${tripName} ` }] : undefined };
 
   const trip = await findTripByName(tripName);
   if (!trip) return { type: 'error', reply: `ไม่พบทริป "${tripName}" สร้างก่อนด้วย: สร้างทริป ${tripName}` };
@@ -325,7 +334,7 @@ async function handleAddNote(input) {
     ? `📝 บันทึก note ในทริป ${trip.name} แล้ว`
     : `📝 บันทึก ${items.length} note ในทริป ${trip.name} แล้ว\n${items.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
 
-  return { type: 'note_added', reply };
+  return { type: 'note_added', reply, quickReplies: addMoreReplies('➕ เพิ่มโน้ตอีก', 'โน้ตทริป', trip.name, { label: '📝 ดูโน้ต', text: `โน้ต ${trip.name}` }) };
 }
 
 async function handleListNotes(tripName) {
