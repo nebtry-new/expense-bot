@@ -109,14 +109,14 @@ test('messages the old parser understands never reach the interpreter', async ()
   assert.equal(calls.length, 0);
 });
 
-test('"ยืม" sentences are routed to the interpreter even though the old parser finds an amount', async () => {
+test('"ยืม" sentences bypass the old half-split parser (resolved in code, no model call)', async () => {
   await setup();
   const calls = stub({ intent: 'add_expense', confidence: 0.9, expenses: [
     { description: 'ยืมเงิน', amount: 500, payer: 'partner', split: 'custom', my_share: 500, partner_share: 0 },
   ] });
 
   const r = await handleTextMessage('ยืมเงิน 500', u1);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 0);
   assert.equal(r.type, 'expense_nl');
   assert.ok(r.reply.includes('A ต้องคืน B เต็มจำนวน 500'), r.reply);
 
@@ -160,4 +160,49 @@ test('loan direction is enforced in code even if the model gets it backwards', a
   assert.ok(r.reply.includes('A ต้องคืน B เต็มจำนวน 500'), r.reply);
   const [saved] = await getExpenses();
   assert.equal(saved.paidByDisplayName, 'B');
+});
+
+const { parseLoanMessage } = require('../src/services/nl-intent');
+
+test('parseLoanMessage: direction and amount are decided in code', () => {
+  const n = { senderName: 'ปิ๊ก', partnerName: 'แจม' };
+
+  const a = parseLoanMessage('แจมให้ยืม 500', n); // แจม lends → ปิ๊ก (sender) owes
+  assert.equal(a.payer, 'partner');
+  assert.equal(a.myShare, 500);
+  assert.equal(a.partnerShare, 0);
+
+  const b = parseLoanMessage('ปิ๊กยืม 500', n); // ปิ๊ก borrows from แจม
+  assert.equal(b.payer, 'partner');
+  assert.equal(b.myShare, 500);
+
+  const c = parseLoanMessage('ปิ๊กยืมแจม 500 ไปทำบุญ', n);
+  assert.equal(c.payer, 'partner');
+  assert.equal(c.description, 'ยืมเงินไปทำบุญ');
+
+  const d = parseLoanMessage('แจมยืม 1.5k', n); // แจม borrows → ปิ๊ก paid
+  assert.equal(d.payer, 'me');
+  assert.equal(d.partnerShare, 1500);
+
+  assert.equal(parseLoanMessage('ยืม 500', n).payer, 'partner'); // default: sender borrows
+  assert.equal(parseLoanMessage('ยืม 500 กับ 200', n), null);    // ambiguous → model
+});
+
+test('loan messages are saved without calling the model, and never fall back to half-split', async () => {
+  await setup(); // sender A, partner B
+  const calls = stub({ intent: 'unknown', confidence: 0, expenses: [] });
+
+  const r = await handleTextMessage('Bให้ยืม 500', u1); // B lends → A owes B
+  assert.equal(calls.length, 0);
+  assert.equal(r.type, 'expense_nl');
+  assert.ok(r.reply.includes('A ต้องคืน B เต็มจำนวน 500'), r.reply);
+
+  const [saved] = await getExpenses();
+  assert.equal(saved.paidByDisplayName, 'B');
+  assert.equal(saved.splitMode, 'custom');
+
+  // ambiguous loan the model can't resolve → error, nothing saved as half-split
+  const r2 = await handleTextMessage('ยืมกับเงินเก่า 200 และ 300', u1);
+  assert.equal(r2.type, 'error');
+  assert.equal((await getExpenses()).length, 1);
 });

@@ -347,6 +347,10 @@ async function handleTextMessage(text, userContext = {}) {
   if (inputLines.length === 1 && NL_CUE_RE.test(normalized)) {
     const cued = await handleNaturalLanguageExpense(normalized, userContext);
     if (cued) return cued;
+    // ยืมเงินแต่ตีความไม่ได้ → อย่าให้ parser เดิมบันทึกเป็นหารครึ่งแบบเงียบๆ
+    if (/ยืม/.test(normalized)) {
+      return { type: 'error', reply: 'ไม่แน่ใจว่าใครยืมใคร กรุณาพิมพ์ เช่น ปิ๊กยืมแจม 500 (คนยืม + ยืม + คนให้ยืม + ยอด)' };
+    }
   }
 
   const result = await handleExpenseLines(inputLines, userContext);
