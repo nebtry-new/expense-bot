@@ -130,12 +130,14 @@ async function handleConfirmYes(userContext) {
           ...pendingDelete.items.map((t) => `• ${t.description} ${Number(t.amount).toLocaleString()} บาท`),
           `รวม ${total.toLocaleString()} บาท`,
         ].join('\n'),
+        quickReplies: [{ label: 'ลบต่อ', text: 'ลบรายการ' }],
       };
     }
     await deleteExpenseById(pendingDelete.id);
     return {
       type: 'expense_deleted',
       reply: `ยกเลิกรายการแล้ว: ${pendingDelete.description} ${Number(pendingDelete.amount).toLocaleString()} บาท`,
+      quickReplies: [{ label: 'ลบต่อ', text: 'ลบรายการ' }],
     };
   }
 

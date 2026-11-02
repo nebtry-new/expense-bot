@@ -37,7 +37,7 @@ const HELP_TEXT = [
   '',
   '━━ 🗑 ลบ / ยกเลิกรายการ ━━',
   '• ยกเลิกรายการล่าสุด: ยกเลิกรายการล่าสุด → ใช่',
-  '• เลือกลบรายการเอง: ลบรายการ [คำค้น/#ทริป] → ลบ [เลข] → ใช่ (รวมรายการของแฟน)',
+  '• เลือกลบรายการเอง: ลบรายการ [คำค้น/#ทริป] → แตะปุ่มรายการ (หรือพิมพ์ ลบ [เลข]) → ใช่ (รวมรายการของแฟน)',
   '• ลบหลายรายการพร้อมกัน: ลบ 1 3 5  หรือ  ลบ 2-4 → ใช่',
   '',
   '━━ ✈️ ทริป ━━',
@@ -158,7 +158,13 @@ async function handleTextMessage(text, userContext = {}) {
     return { type: 'noop', reply: 'ไม่มีข้อความให้ประมวลผล' };
   }
 
+  const hadDeleteFlow = Boolean(deleteConfirmState.pendingByUser[lineUserId] || deleteListState.pendingByUser[lineUserId]);
   dropStalePendingFlows(normalized, lineUserId);
+
+  // ปุ่ม "ไม่ลบ"/"ยกเลิก" ระหว่างเลือก/ยืนยันการลบ (flow ถูกล้างไปแล้วใน dropStalePendingFlows)
+  if (hadDeleteFlow && CANCEL_RE.test(normalized)) {
+    return { type: 'noop', reply: 'ยกเลิกแล้ว' };
+  }
 
   // วลีคำถามสำเร็จรูปจากเมนู "ถามข้อมูล" — ตอบตรงๆ ด้วยโค้ด ไม่เรียกโมเดล (ใช้ได้แม้เครดิต AI หมด)
   const menuQuestion = MENU_QUESTIONS[normalized.replace(/\s*\?$/, '')];

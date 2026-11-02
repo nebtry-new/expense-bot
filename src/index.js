@@ -10,6 +10,7 @@ const { handleLocationForEv } = require('./handlers/commands/ev');
 const { handleMenuPostback } = require('./handlers/commands/menu');
 const { evRouteState, datetimePickerState } = require('./handlers/state');
 const { parseDatetimePickerValue, toLocalDisplay } = require('./utils/parse-date');
+const { buildQuickReplyMessage } = require('./utils/quick-reply');
 
 dotenv.config();
 
@@ -145,7 +146,8 @@ app.post('/webhook', async (req, res) => {
         await sendPushMessage(lineUserId, result.reply);
       } else {
         const result = await handleTextMessage(messageText, userContext);
-        const replyPayload = result.replyMessage || result.reply;
+        const replyPayload = result.replyMessage
+          || (result.quickReplies?.length ? buildQuickReplyMessage(result.reply, result.quickReplies) : result.reply);
         replies.push(typeof replyPayload === 'string' ? { type: 'text', text: replyPayload } : replyPayload);
         await sendReplyMessage(event, replyPayload);
 

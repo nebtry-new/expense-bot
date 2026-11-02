@@ -222,3 +222,40 @@ test('ข้อความอื่นหลังเลือกหลาย�
   await handleTextMessage('ใช่', u1);
   assert.equal((await getExpenses()).length, 4);
 });
+
+test('ลบรายการ ให้ปุ่มเลือกรายการ — แตะปุ่มแล้วได้รายการเดียวกับที่ลิสต์ และมีปุ่มยืนยัน/ยกเลิก', async () => {
+  const { buildQuickReplyMessage } = require('../src/utils/quick-reply');
+  await setup();
+  await handleTextMessage('ค่าอาหาร 100', u1);
+  await handleTextMessage('ค่ากาแฟแสนอร่อยมากๆเลยนะ 50', u1);
+
+  const list = await handleTextMessage('ลบรายการ', u1);
+  const labels = list.quickReplies.map((q) => q.label);
+  assert.equal(labels.at(-1), 'ยกเลิก');
+  assert.ok(list.quickReplies.length <= 13);
+  assert.ok(labels[0].startsWith('1. ค่ากาแฟ'), labels.join('|'));
+
+  // ปุ่ม label ต้องไม่เกิน 20 ตัวอักษรเมื่อแปลงเป็นข้อความ LINE
+  const msg = buildQuickReplyMessage(list.reply, list.quickReplies);
+  assert.ok(msg.quickReply.items.every((i) => [...i.action.label].length <= 20));
+
+  const prompt = await handleTextMessage(list.quickReplies[0].text, u1);
+  assert.ok(prompt.reply.includes('ค่ากาแฟ'));
+  assert.deepEqual(prompt.quickReplies.map((q) => q.text), ['ใช่', 'ยกเลิก']);
+
+  const done = await handleTextMessage(prompt.quickReplies[0].text, u1);
+  assert.equal(done.type, 'expense_deleted');
+  assert.equal(done.quickReplies[0].text, 'ลบรายการ');
+  assert.equal((await getExpenses()).length, 1);
+});
+
+test('กด ไม่ลบ (ยกเลิก) ที่หน้ายืนยัน → ไม่ลบอะไร', async () => {
+  await setup();
+  await handleTextMessage('ค่าอาหาร 100', u1);
+  await handleTextMessage('ลบรายการ', u1);
+  await handleTextMessage('ลบ 1', u1);
+  const r = await handleTextMessage('ยกเลิก', u1);
+  assert.equal(r.reply, 'ยกเลิกแล้ว');
+  assert.equal((await getExpenses()).length, 1);
+  assert.equal((await handleTextMessage('ใช่', u1)).type, 'noop');
+});

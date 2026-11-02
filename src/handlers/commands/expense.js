@@ -182,6 +182,7 @@ async function handleDeleteLastExpense(userContext) {
   return {
     type: 'expense_delete_prompt',
     reply: `รายการ: ${target.description} ${Number(target.amount).toLocaleString()} บาท\nต้องการยกเลิกใช่หรือไม่? พิมพ์ ใช่ เพื่อยืนยัน`,
+    quickReplies: CONFIRM_DELETE_REPLIES,
   };
 }
 
@@ -308,10 +309,13 @@ async function handleNaturalLanguageExpense(text, userContext) {
       '',
       'ถ้าไม่ถูก พิมพ์ ลบรายการ เพื่อเลือกลบ',
     ].join('\n'),
+    quickReplies: [{ label: 'ลบรายการ', text: 'ลบรายการ' }],
   };
 }
 
-const DELETE_LIST_LIMIT = 15;
+// 12 รายการ + ปุ่ม ยกเลิก = 13 ปุ่ม พอดีขีดจำกัด quick reply ของ LINE
+const DELETE_LIST_LIMIT = 12;
+const CONFIRM_DELETE_REPLIES = [{ label: 'ใช่ ลบเลย', text: 'ใช่' }, { label: 'ไม่ลบ', text: 'ยกเลิก' }];
 
 // แสดงรายการที่ยังไม่เคลียร์ของทั้งสองคน (รวมรายการในทริป) โดยกำกับชื่อคนจ่ายถ้าไม่ใช่ของตัวเอง ให้เลือกลบด้วยเลข
 // keyword (optional) กรองจากชื่อรายการหรือชื่อทริป
@@ -370,7 +374,11 @@ async function handleListDeletableExpenses(keyword, userContext) {
 
   return {
     type: 'expense_delete_list',
-    reply: ['รายการที่ลบได้ (ใหม่สุดก่อน):', ...lines, '', 'พิมพ์ ลบ [เลข] เพื่อเลือกรายการ เช่น ลบ 2'].join('\n'),
+    reply: ['รายการที่ลบได้ (ใหม่สุดก่อน):', ...lines, '', 'แตะปุ่มด้านล่างเพื่อเลือก หรือพิมพ์หลายเลข เช่น ลบ 1 3'].join('\n'),
+    quickReplies: [
+      ...candidates.map((e, i) => ({ label: `${i + 1}. ${e.description}`, text: `ลบ ${i + 1}` })),
+      { label: 'ยกเลิก', text: 'ยกเลิก' },
+    ],
   };
 }
 
@@ -416,6 +424,7 @@ function handlePickDeleteExpense(spec, userContext) {
     return {
       type: 'expense_delete_prompt',
       reply: `รายการ: ${fmtTarget(targets[0])}\nต้องการลบใช่หรือไม่? พิมพ์ ใช่ เพื่อยืนยัน`,
+      quickReplies: CONFIRM_DELETE_REPLIES,
     };
   }
 
@@ -429,6 +438,7 @@ function handlePickDeleteExpense(spec, userContext) {
       `รวม ${total.toLocaleString()} บาท`,
       'ต้องการลบทั้งหมดใช่หรือไม่? พิมพ์ ใช่ เพื่อยืนยัน',
     ].join('\n'),
+    quickReplies: CONFIRM_DELETE_REPLIES,
   };
 }
 
