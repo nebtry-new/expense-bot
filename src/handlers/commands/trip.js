@@ -3,7 +3,7 @@ const { fetchPageTitle } = require('../../utils/fetch-title');
 const { calculateBalances } = require('../../utils/balance');
 const { formatExpenseLines } = require('../../utils/format');
 const { parseTripCreation, formatSplitMode } = require('../../utils/parser');
-const { buildSettlementNotification, resetBillingOffers } = require('./settlement');
+const { buildSettlementNotification, resetBillingOffers, BILLING_OFFER_REPLIES } = require('./settlement');
 const { settlementState } = require('../state');
 
 const CATEGORY_KEYWORDS = ['กิน', 'ที่พัก', 'เที่ยว', 'ช้อป'];
@@ -143,13 +143,13 @@ async function handleTripSummary(name) {
   const itemLines = open.map((e) => `• ${e.description} ${Number(e.amount).toLocaleString()} บาท`);
   lines.push('', ...itemLines);
 
-  const prompt = notification ? '\n\nต้องการเรียกเก็บเงินเลยไหม? พิมพ์ ใช่ หรือ เรียกเก็บเงิน' : '';
+  const prompt = notification ? '\n\nต้องการเรียกเก็บเงินเลยไหม? แตะปุ่มด้านล่าง หรือพิมพ์ ใช่' : '';
 
   if (notification?.creditorLineUserId) {
     settlementState.pendingByUser[notification.creditorLineUserId] = notification;
   }
 
-  return { type: 'trip_summary', reply: lines.join('\n') + prompt, notification };
+  return { type: 'trip_summary', reply: lines.join('\n') + prompt, notification, ...(notification ? { quickReplies: BILLING_OFFER_REPLIES } : {}) };
 }
 
 async function handleAddPlace(input) {

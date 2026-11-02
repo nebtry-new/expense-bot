@@ -11,7 +11,7 @@ const { normalizeThaiNumbers } = require('../utils/thai-numbers');
 const { extractDatePhrase } = require('../utils/date-phrases');
 const { dispatchOtherIntent, answerForUser } = require('./commands/nl-dispatch');
 const { MENU_QUESTIONS } = require('./commands/menu');
-const { clearAllState, slipConfirmState, datetimePickerState, deleteConfirmState, deleteListState, nlCommandState } = require('./state');
+const { clearAllState, settlementState, slipConfirmState, datetimePickerState, deleteConfirmState, deleteListState, nlCommandState } = require('./state');
 
 const HELP_TEXT = [
   '📖 คู่มือการใช้งาน',
@@ -164,6 +164,12 @@ async function handleTextMessage(text, userContext = {}) {
   // ปุ่ม "ไม่ลบ"/"ยกเลิก" ระหว่างเลือก/ยืนยันการลบ (flow ถูกล้างไปแล้วใน dropStalePendingFlows)
   if (hadDeleteFlow && CANCEL_RE.test(normalized)) {
     return { type: 'noop', reply: 'ยกเลิกแล้ว' };
+  }
+
+  // ปุ่ม "ยังก่อน" ที่ข้อเสนอเรียกเก็บเงิน — ทิ้งข้อเสนอที่ค้าง ไม่ส่งแจ้งเตือนอะไร
+  if (CANCEL_RE.test(normalized) && settlementState.pendingByUser[lineUserId] && !slipConfirmState.pendingByUser[lineUserId]) {
+    delete settlementState.pendingByUser[lineUserId];
+    return { type: 'noop', reply: 'ยังไม่เรียกเก็บเงิน (พิมพ์ สรุป เมื่อพร้อม)' };
   }
 
   // วลีคำถามสำเร็จรูปจากเมนู "ถามข้อมูล" — ตอบตรงๆ ด้วยโค้ด ไม่เรียกโมเดล (ใช้ได้แม้เครดิต AI หมด)

@@ -2,7 +2,7 @@ const { getUsers, getExpenses, getTrips } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
 const { selectBillableExpenses, summarizePendingTrips } = require('../../utils/billing');
 const { formatExpenseLines } = require('../../utils/format');
-const { buildSettlementNotification, resetBillingOffers } = require('./settlement');
+const { buildSettlementNotification, resetBillingOffers, BILLING_OFFER_REPLIES } = require('./settlement');
 const { settlementState } = require('../state');
 
 async function handleSummary() {
@@ -62,13 +62,13 @@ async function handleSummary() {
       reply += `\n\nรายการ (${activeExpenses.length}):\n${expenseLines.join('\n')}`;
     }
 
-    const prompt = notification ? '\n\nต้องการเรียกเก็บเงินเลยไหม? พิมพ์ ใช่ หรือ เรียกเก็บเงิน' : '';
+    const prompt = notification ? '\n\nต้องการเรียกเก็บเงินเลยไหม? แตะปุ่มด้านล่าง หรือพิมพ์ ใช่' : '';
 
     if (notification?.creditorLineUserId) {
       settlementState.pendingByUser[notification.creditorLineUserId] = notification;
     }
 
-    return { type: 'summary', summary, reply: `${reply}${pendingTripNote}${prompt}`, notification };
+    return { type: 'summary', summary, reply: `${reply}${pendingTripNote}${prompt}`, notification, ...(notification ? { quickReplies: BILLING_OFFER_REPLIES } : {}) };
   }
 
   const multiUserReply = users

@@ -259,3 +259,23 @@ test('กด ไม่ลบ (ยกเลิก) ที่หน้ายืน
   assert.equal((await getExpenses()).length, 1);
   assert.equal((await handleTextMessage('ใช่', u1)).type, 'noop');
 });
+
+test('สรุปทริป/สรุป ที่มียอดค้าง → มีปุ่มเรียกเก็บเงิน/ยังก่อน; ยังก่อน = ทิ้งข้อเสนอ ใช่ทีหลังไม่ส่งอะไร', async () => {
+  await setup();
+  await handleTextMessage('สร้างทริป หัวหิน', u1);
+  await handleTextMessage('ค่าโรงแรม 1000 #หัวหิน', u1);
+
+  const sum = await handleTextMessage('สรุปทริป หัวหิน', u1);
+  assert.equal(sum.type, 'trip_summary');
+  assert.deepEqual(sum.quickReplies.map((q) => q.text), ['ใช่', 'ยกเลิก']);
+
+  const no = await handleTextMessage('ยกเลิก', u1);
+  assert.ok(no.reply.includes('ยังไม่เรียกเก็บ'), no.reply);
+  assert.equal((await handleTextMessage('ใช่', u1)).type, 'noop');
+
+  await handleTextMessage('ค่าอาหาร 200', u1);
+  const s2 = await handleTextMessage('สรุป', u1);
+  assert.deepEqual(s2.quickReplies.map((q) => q.text), ['ใช่', 'ยกเลิก']);
+  const yes = await handleTextMessage('ใช่', u1);
+  assert.equal(yes.type, 'settlement_trigger');
+});

@@ -7,6 +7,8 @@ const { handleSlipConfirm } = require('./slip');
 // เก็บยอดและขอบเขต (scope) ที่ตกลงกันไว้ (creditor กด ใช่) เพื่อให้ debtor ใช้ตอนกด จ่ายแล้ว
 // scope: { tripId } — tripId = null คือรอบทั่วไป (รายการทั่วไป + ทริปที่ปิดแล้ว), มีค่า = เฉพาะทริปนั้น
 const DEFAULT_SCOPE = { tripId: null };
+// ปุ่มตอบข้อเสนอเรียกเก็บเงินหลังสรุป (ส่งเป็นข้อความคำสั่งเดิม)
+const BILLING_OFFER_REPLIES = [{ label: 'เรียกเก็บเงิน', text: 'ใช่' }, { label: 'ยังก่อน', text: 'ยกเลิก' }];
 const agreedAmountByDebtor = {};
 
 // สรุปใหม่ทุกครั้ง = ข้อเสนอเรียกเก็บเก่าที่ค้างอยู่ (ของทั้งสองคน) หมดอายุ
@@ -191,4 +193,4 @@ async function handleConfirmYes(userContext) {
   };
 }
 
-module.exports = { resetBillingOffers, buildSettlementNotification, handlePaymentSent, handlePaymentReceived, handleConfirmYes };
+module.exports = { BILLING_OFFER_REPLIES, resetBillingOffers, buildSettlementNotification, handlePaymentSent, handlePaymentReceived, handleConfirmYes };
