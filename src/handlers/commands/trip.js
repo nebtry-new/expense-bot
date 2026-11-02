@@ -1,7 +1,8 @@
-const { createTrip, getTrips, setTripBillable, getExpensesByTrip, findTripByName, getUsers, addTripPlace, getTripPlaces, deleteTripPlace, markTripPlaceVisited, addTripNote, getTripNotes } = require('../../services/db');
+const { createTrip, getTrips, getExpenses, setTripBillable, getExpensesByTrip, findTripByName, getUsers, addTripPlace, getTripPlaces, deleteTripPlace, markTripPlaceVisited, addTripNote, getTripNotes } = require('../../services/db');
 const { fetchPageTitle } = require('../../utils/fetch-title');
 const { calculateBalances } = require('../../utils/balance');
 const { formatExpenseLines } = require('../../utils/format');
+const { buildTripReport, tripStats, statsLabel, fmt: fmtAmount } = require('../../utils/trip-report');
 const { parseTripCreation, formatSplitMode } = require('../../utils/parser');
 const { buildSettlementNotification, resetBillingOffers, BILLING_OFFER_REPLIES } = require('./settlement');
 const { settlementState } = require('../state');
@@ -73,8 +74,12 @@ async function handleListTrips() {
     return { type: 'trips', reply: 'ยังไม่มีทริป สร้างทริปได้ด้วย: สร้างทริป (ชื่อ)' };
   }
 
-  const lines = allTrips.map((t, i) => `${i + 1}. ${t.name}`);
-  return { type: 'trips', reply: `ทริปทั้งหมด:\n${lines.join('\n')}` };
+  const expenses = await getExpenses();
+  const lines = allTrips.map((t, i) => {
+    const stats = tripStats(expenses.filter((e) => e.tripId === t.id));
+    return `${i + 1}. ${t.name} — ${t.is_billable === true ? 'ปิดทริปแล้ว' : 'ยังไม่ปิด'} · ${statsLabel(stats)}`;
+  });
+  return { type: 'trips', reply: `ทริปทั้งหมด:\n${lines.join('\n')}\n\nดูรายการที่จ่ายไป: สรุปทริป [ชื่อทริป]` };
 }
 
 async function handleSetTripBillable(name, isBillable) {
@@ -104,19 +109,18 @@ async function handleTripSummary(name) {
   }
 
   const users = await getUsers();
-  // นับเฉพาะรายการที่ยังไม่เคลียร์ — ยอดรวม รายการ และยอดเรียกเก็บต้องมาจากชุดเดียวกัน
+  // แสดงทุกรายการของทริป (ดูทริปเก่าได้ว่าจ่ายอะไรไปบ้าง) — แต่ยอดเรียกเก็บ/ปุ่มเรียกเก็บคิดจากรายการที่ยังไม่เคลียร์เท่านั้น
   const open = tripExpenses.filter((e) => !e.isCleared);
-  const clearedCount = tripExpenses.length - open.length;
-  const clearedNote = clearedCount ? ` (เคลียร์แล้ว ${clearedCount} รายการ ไม่รวม)` : '';
+  const lines = buildTripReport({ trip, expenses: tripExpenses, users });
   if (!open.length) {
-    return { type: 'trip_summary', reply: `ทริป "${trip.name}" เคลียร์ยอดครบแล้ว (${clearedCount} รายการ)` };
+    lines.push('', `✅ เคลียร์ยอดครบแล้ว (${tripExpenses.length} รายการ)`);
+    return { type: 'trip_summary', reply: lines.join('\n') };
   }
 
-  const total = open.reduce((sum, e) => sum + Number(e.amount || 0), 0);
   const balances = calculateBalances(open, users);
   const formatAmount = (v) => Math.abs(v).toFixed(2);
-
-  const lines = [`สรุปทริป "${trip.name}"`, `รายการทั้งหมด: ${total.toLocaleString()} บาท (${open.length} รายการ)${clearedNote}`];
+  const openTotal = open.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  lines.push('', `⏳ ยังไม่เคลียร์ ${open.length} รายการ (${fmtAmount(openTotal)} บาท)`);
 
   let notification = null;
   if (users.length === 2) {
@@ -139,9 +143,6 @@ async function handleTripSummary(name) {
       lines.push('ยอดทริปนี้หักลบกันพอดี ไม่มียอดค้าง');
     }
   }
-
-  const itemLines = open.map((e) => `• ${e.description} ${Number(e.amount).toLocaleString()} บาท`);
-  lines.push('', ...itemLines);
 
   const prompt = notification ? '\n\nต้องการเรียกเก็บเงินเลยไหม? แตะปุ่มด้านล่าง หรือพิมพ์ ใช่' : '';
 

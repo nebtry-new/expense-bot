@@ -1,10 +1,11 @@
 // ตอบ postback จาก Rich menu (action=menu_*) ด้วยข้อความ + quick reply ให้เลือกขั้นต่อไป
 // ทุกตัวเลือกเป็น "ข้อความคำสั่งเดิม" จึงผ่าน flow/ขั้นตอนยืนยันเดิมทั้งหมด
-const { getTrips, listRestaurants, getTripPlaces, markTripPlaceVisitedById, deleteTripPlaceById } = require('../../services/db');
+const { getTrips, getExpensesByTrip, listRestaurants, getTripPlaces, markTripPlaceVisitedById, deleteTripPlaceById } = require('../../services/db');
 const { handleListNotes, handleListPlaces } = require('./trip');
 const { handleListTodos, handleListEvents } = require('./planner');
 const { answerForUser } = require('./nl-dispatch');
 const { cancelItem } = require('../../utils/quick-reply');
+const { tripStats, statsLabel } = require('../../utils/trip-report');
 const { deleteListState, deleteConfirmState, nlCommandState, notifListState, eventListState, todoListState, restaurantListState, restaurantPickState, wishListState, partnerWishState, giftConfirmState } = require('../state');
 
 const MAX_QUICK_REPLIES = 13;
@@ -60,11 +61,11 @@ const tripPb = (action, trip, extra = '') => `action=${action}&id=${encodeURICom
 const backToHub = (trip) => postbackItem('← กลับ', tripPb('menu_trip_detail', trip), `กลับ ${trip.name}`);
 
 // ชั้นที่ 2: เมนูของทริป
-function tripHub(trip, prefix = '') {
+async function tripHub(trip, prefix = '') {
   const n = trip.name;
   const closed = trip.is_billable === true;
   const items = [
-    sayItem('📊 สรุปทริป', `สรุปทริป ${n}`),
+    sayItem('📊 สรุปและรายการ', `สรุปทริป ${n}`),
     postbackItem('📝 โน้ต', tripPb('menu_trip_notes', trip), `โน้ต ${n}`),
     postbackItem('📍 ที่เที่ยว', tripPb('menu_trip_places', trip), `ที่เที่ยว ${n}`),
     sayItem('🗺 เส้นทาง', `เส้นทางทริป ${n}`),
@@ -72,7 +73,8 @@ function tripHub(trip, prefix = '') {
     postbackItem('← ทริปอื่น', 'action=menu_trip', 'ทริป'),
   ];
   const state = closed ? 'ปิดทริปแล้ว (รวมใน สรุป)' : 'ยังไม่ปิดทริป (ยังไม่รวมใน สรุป)';
-  return withQuickReplies(`${prefix}✈️ ${n}\n${state}\nเลือกสิ่งที่ต้องการ`, items);
+  const stats = statsLabel(tripStats(await getExpensesByTrip(trip.id)));
+  return withQuickReplies(`${prefix}✈️ ${n}\n${state}\n💰 ${stats}\nแตะ สรุปและรายการ เพื่อดูว่าจ่ายอะไรไปบ้าง`, items);
 }
 
 // ชั้นที่ 3: โน้ต / ที่เที่ยว — แสดงรายการ + ปุ่มจัดการ

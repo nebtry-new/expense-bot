@@ -84,7 +84,7 @@ test('an expense added after the bill is agreed is NOT cleared by รับแ�
   assert.ok(next.reply.includes('แจม ต้องจ่ายให้ ปิ๊ก 20.00'), next.reply);
 });
 
-test('trip summary counts only open items and says how many were already cleared', async () => {
+test('trip summary lists every item (cleared + open) but bills only the open ones', async () => {
   await setup();
   await handleTextMessage('สร้างทริป หัวหิน', A);
   await handleTextMessage('ค่าโรงแรม 1200 #หัวหิน', A);
@@ -96,13 +96,17 @@ test('trip summary counts only open items and says how many were already cleared
 
   await handleTextMessage('ค่าอาหาร 300 #หัวหิน', B);
   const again = await handleTextMessage('สรุปทริป หัวหิน', A);
-  assert.ok(again.reply.includes('รายการทั้งหมด: 300 บาท (1 รายการ) (เคลียร์แล้ว 1 รายการ ไม่รวม)'), again.reply);
-  assert.ok(again.reply.includes('ปิ๊ก ต้องจ่ายคืน แจม 150.00'), again.reply);
-  assert.ok(!again.reply.includes('ค่าโรงแรม'));
+  assert.ok(again.reply.includes('ใช้จ่ายรวม 1,500 บาท · 2 รายการ'), again.reply);
+  assert.ok(again.reply.includes('ค่าโรงแรม 1,200 บาท (ปิ๊ก) ✓'), again.reply); // ที่เคลียร์แล้วยังแสดง พร้อมเครื่องหมาย
+  assert.ok(again.reply.includes('ค่าอาหาร 300 บาท (แจม)') && !again.reply.includes('ค่าอาหาร 300 บาท (แจม) ✓'), again.reply);
+  assert.ok(again.reply.includes('⏳ ยังไม่เคลียร์ 1 รายการ (300 บาท)'), again.reply);
+  assert.ok(again.reply.includes('ปิ๊ก ต้องจ่ายคืน แจม 150.00'), again.reply); // ยอดเรียกเก็บยังมาจากรายการที่ยังไม่เคลียร์เท่านั้น
 
   await handleTextMessage('ใช่', B);
   await handleTextMessage('จ่ายแล้ว', A);
   await handleTextMessage('รับแล้ว', B);
   const done = await handleTextMessage('สรุปทริป หัวหิน', A);
-  assert.ok(done.reply.includes('เคลียร์ยอดครบแล้ว'), done.reply);
+  assert.ok(done.reply.includes('✅ เคลียร์ยอดครบแล้ว (2 รายการ)'), done.reply);
+  assert.ok(done.reply.includes('ค่าโรงแรม') && done.reply.includes('ค่าอาหาร'), done.reply); // เคลียร์ครบแล้วก็ยังแจกแจงรายการ
+  assert.equal(done.quickReplies, undefined); // ไม่มียอดค้าง ไม่มีปุ่มเรียกเก็บ
 });
