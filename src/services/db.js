@@ -337,18 +337,22 @@ async function getExpenses() {
   return [...expenses];
 }
 
-async function clearSettlement() {
+async function clearSettlement(expenseIds) {
+  const ids = new Set((expenseIds || []).map(String));
+  if (!ids.size) return;
+
   if (supabase) {
     const { error } = await supabase
       .from('expenses')
       .update({ is_cleared: true })
+      .in('id', [...ids])
       .eq('is_cleared', false);
     if (error) throw error;
     return;
   }
 
   for (const expense of expenses) {
-    expense.isCleared = true;
+    if (ids.has(String(expense.id))) expense.isCleared = true;
   }
 }
 
@@ -412,7 +416,7 @@ async function deleteLastExpense(paidByUserId) {
 }
 
 async function createTrip(name, defaultSplitMode = 'half', defaultNumPeople = null) {
-  const payload = { name, default_split_mode: defaultSplitMode, default_num_people: defaultNumPeople || null };
+  const payload = { name, default_split_mode: defaultSplitMode, default_num_people: defaultNumPeople || null, is_billable: false };
   if (supabase) {
     const { data, error } = await supabase.from('trips').insert(payload).select();
     if (error) throw error;
@@ -423,6 +427,7 @@ async function createTrip(name, defaultSplitMode = 'half', defaultNumPeople = nu
     name,
     default_split_mode: defaultSplitMode,
     default_num_people: defaultNumPeople || null,
+    is_billable: false,
     createdAt: new Date().toISOString(),
   };
   trips.push(trip);
@@ -436,6 +441,16 @@ async function getTrips() {
     return data || [];
   }
   return [...trips];
+}
+
+async function setTripBillable(tripId, isBillable) {
+  if (supabase) {
+    const { error } = await supabase.from('trips').update({ is_billable: isBillable }).eq('id', tripId);
+    if (error) throw error;
+    return;
+  }
+  const trip = trips.find((t) => t.id === tripId);
+  if (trip) trip.is_billable = isBillable;
 }
 
 async function findTripByName(name) {
@@ -723,6 +738,7 @@ module.exports = {
   deleteExpenseById,
   createTrip,
   getTrips,
+  setTripBillable,
   findTripByName,
   getExpensesByTrip,
   addTripPlace,

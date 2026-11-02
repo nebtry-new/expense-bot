@@ -1,13 +1,19 @@
 const { getUsers, getExpenses, getTrips } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
+const { selectBillableExpenses, summarizePendingTrips } = require('../../utils/billing');
 const { formatExpenseLines } = require('../../utils/format');
 const { buildSettlementNotification } = require('./settlement');
 const { settlementState } = require('../state');
 
 async function handleSummary() {
   const users = await getUsers();
-  const expenses = await getExpenses();
+  const allExpenses = await getExpenses();
   const trips = await getTrips();
+  const expenses = selectBillableExpenses(allExpenses, trips);
+  const pendingTrips = summarizePendingTrips(allExpenses, trips);
+  const pendingTripNote = pendingTrips.length
+    ? `\n\nทริปที่ยังไม่เรียกเก็บ (ไม่รวมในยอด):\n${pendingTrips.map((t) => `• ${t.name} ${t.total.toLocaleString()} บาท`).join('\n')}`
+    : '';
 
   if (!users.length) {
     return { type: 'summary', reply: 'ยังไม่มีผู้ใช้ในระบบ กรุณาลงทะเบียนก่อน เช่น ลงทะเบียน ปิ๊ก' };
@@ -26,7 +32,7 @@ async function handleSummary() {
     const summaryB = Number(summary[String(userB.id)] ?? 0);
 
     if (summaryA === 0 && summaryB === 0) {
-      return { type: 'summary', summary, reply: 'ไม่มียอดค้างจ่าย' };
+      return { type: 'summary', summary, reply: `ไม่มียอดค้างจ่าย${pendingTripNote}` };
     }
 
     let reply;
@@ -45,6 +51,7 @@ async function handleSummary() {
     }
     if (notification) {
       notification.expenseLines = expenseLines;
+      notification.scope = { tripId: null };
     }
     if (!notification && summaryA !== 0 && summaryB !== 0) {
       reply = `สรุปยอด: ${userA.displayName} ${summaryA >= 0 ? 'ได้รับ' : 'ต้องจ่าย'} ${formatAmount(summaryA)} บาท, ${userB.displayName} ${summaryB >= 0 ? 'ได้รับ' : 'ต้องจ่าย'} ${formatAmount(summaryB)} บาท`;
@@ -60,7 +67,7 @@ async function handleSummary() {
       settlementState.pendingByUser[notification.creditorLineUserId] = notification;
     }
 
-    return { type: 'summary', summary, reply: `${reply}${prompt}`, notification };
+    return { type: 'summary', summary, reply: `${reply}${pendingTripNote}${prompt}`, notification };
   }
 
   const multiUserReply = users

@@ -116,6 +116,7 @@ trips (
   name                text,
   default_split_mode  text default 'half',
   default_num_people  int (nullable),
+  is_billable         boolean default false,  -- true = รวมใน "สรุป" ทั่วไป (ปิดทริปแล้ว)
   created_at          timestamptz
 )
 ```
@@ -164,6 +165,7 @@ trips (
 - `supabase/migration_002_add_trip_id_to_expenses.sql`
 - `supabase/migration_003_trip_default_split.sql`
 - `supabase/migration_004_trip_places_car_profile.sql` ← Sprint 2
+- `supabase/migration_008_trip_billable.sql` ← trips.is_billable (ทริปใหม่ไม่รวมใน สรุป จนกว่าจะ ปิดทริป)
 
 ### Sprint 2 — Trip Assistant ✅ เสร็จแล้ว
 

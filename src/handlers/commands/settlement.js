@@ -1,9 +1,12 @@
-const { getUsers, getExpenses, clearSettlement, deleteExpenseById } = require('../../services/db');
+const { getUsers, getExpenses, getTrips, clearSettlement, deleteExpenseById } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
+const { selectBillableExpenses } = require('../../utils/billing');
 const { settlementState, paymentConfirmState, deleteConfirmState, slipConfirmState } = require('../state');
 const { handleSlipConfirm } = require('./slip');
 
-// เก็บยอดที่ตกลงกันไว้ (creditor กด ใช่) เพื่อให้ debtor ใช้ตอนกด จ่ายแล้ว
+// เก็บยอดและขอบเขต (scope) ที่ตกลงกันไว้ (creditor กด ใช่) เพื่อให้ debtor ใช้ตอนกด จ่ายแล้ว
+// scope: { tripId } — tripId = null คือรอบทั่วไป (รายการทั่วไป + ทริปที่ปิดแล้ว), มีค่า = เฉพาะทริปนั้น
+const DEFAULT_SCOPE = { tripId: null };
 const agreedAmountByDebtor = {};
 
 function buildSettlementNotification(summary, users) {
@@ -32,14 +35,16 @@ function buildSettlementNotification(summary, users) {
 
 async function handlePaymentSent(userContext) {
   const users = await getUsers();
-  const expenses = await getExpenses();
 
   if (users.length < 2) {
     return { type: 'error', reply: 'ระบบต้องมีผู้ใช้ 2 คนก่อน' };
   }
 
-  const summary = calculateBalances(expenses, users);
   const currentLineUserId = userContext.lineUserId || 'unknown';
+  const agreed = agreedAmountByDebtor[currentLineUserId];
+  const scope = agreed?.scope || DEFAULT_SCOPE;
+  const [allExpenses, trips] = await Promise.all([getExpenses(), getTrips()]);
+  const summary = calculateBalances(selectBillableExpenses(allExpenses, trips, scope), users);
   const currentUser = users.find((u) => u.lineUserId === currentLineUserId);
 
   if (!currentUser) {
@@ -56,8 +61,7 @@ async function handlePaymentSent(userContext) {
     return { type: 'error', reply: 'ไม่พบผู้รับเงินในระบบ' };
   }
 
-  const agreedAmount = agreedAmountByDebtor[currentLineUserId];
-  const amount = agreedAmount ?? Math.abs(currentBalance);
+  const amount = agreed?.amount ?? Math.abs(currentBalance);
   delete agreedAmountByDebtor[currentLineUserId];
 
   const pending = {
@@ -66,6 +70,7 @@ async function handlePaymentSent(userContext) {
     creditorName: creditor.displayName,
     creditorLineUserId: creditor.lineUserId,
     amount,
+    scope,
   };
 
   if (creditor.lineUserId) {
@@ -88,7 +93,11 @@ async function handlePaymentReceived(userContext) {
   }
 
   delete paymentConfirmState.pendingByUser[currentLineUserId];
-  await clearSettlement();
+
+  const [allExpenses, trips] = await Promise.all([getExpenses(), getTrips()]);
+  const toClear = selectBillableExpenses(allExpenses, trips, pending.scope || DEFAULT_SCOPE)
+    .filter((e) => !e.isCleared);
+  await clearSettlement(toClear.map((e) => e.id));
 
   return {
     type: 'payment_confirmed',
@@ -133,7 +142,7 @@ async function handleConfirmYes(userContext) {
   delete settlementState.pendingByUser[currentLineUserId];
 
   if (pending.debtorLineUserId) {
-    agreedAmountByDebtor[pending.debtorLineUserId] = pending.amount;
+    agreedAmountByDebtor[pending.debtorLineUserId] = { amount: pending.amount, scope: pending.scope || DEFAULT_SCOPE };
   }
 
   return {

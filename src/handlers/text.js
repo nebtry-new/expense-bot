@@ -3,7 +3,7 @@ const { handleSummary, handleMonthlySummary } = require('./commands/summary');
 const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('./commands/settlement');
 const { handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
-const { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
+const { handleCreateTrip, handleListTrips, handleTripSummary, handleSetTripBillable, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
 const { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification } = require('./commands/notifications');
 const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
@@ -34,7 +34,9 @@ const HELP_TEXT = [
   '• สร้างทริป: สร้างทริป (ชื่อ)  หรือ  สร้างทริป (ชื่อ) หาร 3',
   '• บันทึกค่าใช้จ่ายในทริป: ค่าโรงแรม 1200 #ชื่อทริป',
   '• ดูทริปทั้งหมด: ทริป',
-  '• สรุปค่าใช้จ่ายทริป: สรุปทริป (ชื่อ)',
+  '• สรุปค่าใช้จ่ายทริป (เรียกเก็บเฉพาะทริป): สรุปทริป (ชื่อ)',
+  '• ทริปใหม่ยังไม่รวมใน สรุป → พร้อมเรียกเก็บ: ปิดทริป (ชื่อ)',
+  '• ดึงทริปออกจาก สรุป อีกครั้ง: เปิดทริป (ชื่อ)',
   '',
   '━━ 📍 สถานที่ในทริป ━━',
   '• เพิ่มสถานที่: เพิ่มที่ (ชื่อ) [กิน/เที่ยว/ที่พัก/ช้อป] [url] #ทริป',
@@ -75,7 +77,7 @@ const YES_RE = /^(ใช่|yes|ok|เรียกเก็บเงิน)$/i;
 const CANCEL_RE = /^(ยกเลิก|cancel|ไม่เอา)$/i;
 const MAPS_URL_RE = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/;
 // Commands that never belong to a free-text flow (datetime picker reply)
-const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
+const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
 
 function isSlipReply(text) {
   return YES_RE.test(text)
@@ -236,6 +238,16 @@ async function handleTextMessage(text, userContext = {}) {
   const tripSummaryMatch = normalized.match(/^สรุปทริป\s*(.+)$/i);
   if (tripSummaryMatch) {
     return handleTripSummary(tripSummaryMatch[1].trim());
+  }
+
+  const closeTripMatch = normalized.match(/^ปิดทริป\s*(.+)$/i);
+  if (closeTripMatch) {
+    return handleSetTripBillable(closeTripMatch[1].trim(), true);
+  }
+
+  const openTripMatch = normalized.match(/^เปิดทริป\s*(.+)$/i);
+  if (openTripMatch) {
+    return handleSetTripBillable(openTripMatch[1].trim(), false);
   }
 
   const addPlaceMatch = normalized.match(/^เพิ่มที่\s*(.+)$/i);

@@ -1,4 +1,4 @@
-const { createTrip, getTrips, getExpensesByTrip, findTripByName, getUsers, addTripPlace, getTripPlaces, deleteTripPlace, markTripPlaceVisited, addTripNote, getTripNotes } = require('../../services/db');
+const { createTrip, getTrips, setTripBillable, getExpensesByTrip, findTripByName, getUsers, addTripPlace, getTripPlaces, deleteTripPlace, markTripPlaceVisited, addTripNote, getTripNotes } = require('../../services/db');
 const { fetchPageTitle } = require('../../utils/fetch-title');
 const { calculateBalances } = require('../../utils/balance');
 const { formatExpenseLines } = require('../../utils/format');
@@ -63,7 +63,7 @@ async function handleCreateTrip(input) {
     type: 'trip_created',
     trip,
     tripNotify: `🗺 สร้างทริปใหม่: "${name}"`,
-    reply: `สร้างทริป "${name}" แล้ว (ค่าเริ่มต้น: ${splitLabel})\nบันทึกค่าใช้จ่ายด้วย #${name} ท้ายข้อความ\nเช่น ค่าโรงแรม 1200 #${name}`,
+    reply: `สร้างทริป "${name}" แล้ว (ค่าเริ่มต้น: ${splitLabel})\nบันทึกค่าใช้จ่ายด้วย #${name} ท้ายข้อความ\nเช่น ค่าโรงแรม 1200 #${name}\n(ยอดทริปนี้ยังไม่รวมใน สรุป จนกว่าจะพิมพ์ ปิดทริป ${name})`,
   };
 }
 
@@ -75,6 +75,20 @@ async function handleListTrips() {
 
   const lines = allTrips.map((t, i) => `${i + 1}. ${t.name}`);
   return { type: 'trips', reply: `ทริปทั้งหมด:\n${lines.join('\n')}` };
+}
+
+async function handleSetTripBillable(name, isBillable) {
+  const trip = await findTripByName(name);
+  if (!trip) {
+    return { type: 'error', reply: `ไม่พบทริป "${name}"` };
+  }
+  await setTripBillable(trip.id, isBillable);
+  return {
+    type: 'trip_billable',
+    reply: isBillable
+      ? `ปิดทริป "${trip.name}" แล้ว ยอดทริปนี้จะรวมใน สรุป`
+      : `เปิดทริป "${trip.name}" อีกครั้ง ยอดทริปนี้จะไม่รวมใน สรุป`,
+  };
 }
 
 async function handleTripSummary(name) {
@@ -109,6 +123,7 @@ async function handleTripSummary(name) {
       notification = buildSettlementNotification(balances, users);
       if (notification) {
         notification.tripName = trip.name;
+        notification.scope = { tripId: trip.id };
         notification.expenseLines = formatExpenseLines(tripExpenses);
       }
     }
@@ -314,4 +329,4 @@ async function handleListNotes(tripName) {
   return { type: 'trip_notes', reply: lines.join('\n') };
 }
 
-module.exports = { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes };
+module.exports = { handleCreateTrip, handleListTrips, handleTripSummary, handleSetTripBillable, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes };
