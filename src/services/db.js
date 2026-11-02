@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { classifyByRules } = require('../utils/categories');
 const dotenv = require('dotenv');
 
 dotenv.config();
@@ -49,6 +50,8 @@ async function resetData() {
   global._unrecognized = [];
   global._nlLog = [];
   global._notifications = [];
+  global._categoryBudgets = {};
+  global._billingRequests = [];
   global._paymentConfirmations = [];
   global._events = [];
   global._todos = [];
@@ -272,7 +275,7 @@ async function addExpense(expense) {
       paid_by: expense.paidByUserId,
       amount: expense.amount,
       description: expense.description,
-      category: expense.category || 'other',
+      category: expense.category || classifyByRules(expense.description),
       split_mode: expense.splitMode || 'half',
       num_people: expense.numPeople || null,
       is_cleared: false,
@@ -303,6 +306,7 @@ async function addExpense(expense) {
     id: `exp_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
     ...expense,
+    category: expense.category || classifyByRules(expense.description),
     paidByUserId: expense.paidByUserId,
     paidByDisplayName: expense.paidByDisplayName,
     createdAt: expense.createdAt ? new Date(expense.createdAt).toISOString() : new Date().toISOString(),
@@ -310,6 +314,18 @@ async function addExpense(expense) {
 
   expenses.push(nextExpense);
   return nextExpense;
+}
+
+async function setExpenseCategory(id, category) {
+  if (supabase) {
+    const { error } = await supabase.from('expenses').update({ category }).eq('id', id);
+    if (error) throw error;
+    return true;
+  }
+  const e = expenses.find((x) => x.id === id);
+  if (!e) return false;
+  e.category = category;
+  return true;
 }
 
 async function getExpenses() {
@@ -1083,6 +1099,136 @@ async function markPaymentReminded(id, at = new Date()) {
   if (r) r.last_reminded_at = at.toISOString();
 }
 
+// ---- ข้อเสนอเรียกเก็บที่ส่งให้ลูกหนี้แล้ว ไว้เตือนค้างชำระ 3/7 วัน (migration_015) ----
+const toBillingRequest = (r) => (r ? {
+  id: r.id,
+  debtorLineUserId: r.debtor_line_user_id,
+  creditorLineUserId: r.creditor_line_user_id,
+  debtorName: r.debtor_name,
+  creditorName: r.creditor_name,
+  amount: Number(r.amount),
+  scope: r.scope || null,
+  requestedAt: r.requested_at,
+  reminded3At: r.reminded_3_at || null,
+  reminded7At: r.reminded_7_at || null,
+} : null);
+
+// ลูกหนี้หนึ่งคนมีข้อเสนอค้างได้ครั้งละหนึ่งรายการ — เรียกเก็บใหม่ = แทนที่อันเก่า
+async function saveBillingRequest(b) {
+  const row = {
+    debtor_line_user_id: b.debtorLineUserId,
+    creditor_line_user_id: b.creditorLineUserId || null,
+    debtor_name: b.debtorName,
+    creditor_name: b.creditorName,
+    amount: b.amount,
+    scope: b.scope || null,
+  };
+  if (supabase) {
+    const del = await supabase.from('billing_requests').delete()
+      .eq('debtor_line_user_id', b.debtorLineUserId).is('resolved_at', null);
+    if (del.error) throw del.error;
+    const { data, error } = await supabase.from('billing_requests').insert(row).select();
+    if (error) throw error;
+    return toBillingRequest(data?.[0]);
+  }
+  if (!global._billingRequests) global._billingRequests = [];
+  global._billingRequests = global._billingRequests
+    .filter((r) => !(r.debtor_line_user_id === b.debtorLineUserId && !r.resolved_at));
+  const mem = {
+    id: `bill_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+    ...row,
+    requested_at: new Date().toISOString(),
+    reminded_3_at: null,
+    reminded_7_at: null,
+    resolved_at: null,
+  };
+  global._billingRequests.push(mem);
+  return toBillingRequest(mem);
+}
+
+async function listOpenBillingRequests() {
+  if (supabase) {
+    const { data, error } = await supabase.from('billing_requests').select('*').is('resolved_at', null);
+    if (error) throw error;
+    return (data || []).map(toBillingRequest);
+  }
+  return (global._billingRequests || []).filter((r) => !r.resolved_at).map(toBillingRequest);
+}
+
+// stage: 3 | 7 — ถ้าส่ง 7 โดยยังไม่เคยส่ง 3 (เซิร์ฟเวอร์ดับข้ามไป) ให้ถือว่าส่ง 3 แล้วด้วย จะได้ไม่เตือนซ้อนสองครั้ง
+async function markBillingReminded(id, stage, at = new Date()) {
+  const iso = at.toISOString();
+  if (supabase) {
+    const patch = stage === 7 ? { reminded_7_at: iso } : { reminded_3_at: iso };
+    const { error } = await supabase.from('billing_requests').update(patch).eq('id', id);
+    if (error) throw error;
+    if (stage === 7) {
+      await supabase.from('billing_requests').update({ reminded_3_at: iso }).eq('id', id).is('reminded_3_at', null);
+    }
+    return;
+  }
+  const r = (global._billingRequests || []).find((x) => x.id === id);
+  if (!r) return;
+  if (stage === 7) { r.reminded_7_at = iso; r.reminded_3_at = r.reminded_3_at || iso; } else r.reminded_3_at = iso;
+}
+
+async function resolveBillingRequest(id) {
+  const now = new Date().toISOString();
+  if (supabase) {
+    const { error } = await supabase.from('billing_requests').update({ resolved_at: now }).eq('id', id).is('resolved_at', null);
+    if (error) throw error;
+    return;
+  }
+  const r = (global._billingRequests || []).find((x) => x.id === id);
+  if (r && !r.resolved_at) r.resolved_at = now;
+}
+
+async function resolveBillingRequestsForDebtor(debtorLineUserId) {
+  const now = new Date().toISOString();
+  if (supabase) {
+    const { error } = await supabase.from('billing_requests').update({ resolved_at: now })
+      .eq('debtor_line_user_id', debtorLineUserId).is('resolved_at', null);
+    if (error) throw error;
+    return;
+  }
+  for (const r of global._billingRequests || []) {
+    if (r.debtor_line_user_id === debtorLineUserId && !r.resolved_at) r.resolved_at = now;
+  }
+}
+
+// ---- งบรายเดือนต่อหมวด (migration_014) ----
+async function setCategoryBudget(category, monthlyLimit) {
+  if (supabase) {
+    const { error } = await supabase.from('category_budgets')
+      .upsert({ category, monthly_limit: monthlyLimit, updated_at: new Date().toISOString() });
+    if (error) throw error;
+    return;
+  }
+  if (!global._categoryBudgets) global._categoryBudgets = {};
+  global._categoryBudgets[category] = monthlyLimit;
+}
+
+// คืน { [category]: monthlyLimit }
+async function listCategoryBudgets() {
+  if (supabase) {
+    const { data, error } = await supabase.from('category_budgets').select('category, monthly_limit');
+    if (error) throw error;
+    return Object.fromEntries((data || []).map((r) => [r.category, Number(r.monthly_limit)]));
+  }
+  return { ...(global._categoryBudgets || {}) };
+}
+
+async function deleteCategoryBudget(category) {
+  if (supabase) {
+    const { data, error } = await supabase.from('category_budgets').delete().eq('category', category).select();
+    if (error) throw error;
+    return Boolean(data?.length);
+  }
+  if (!global._categoryBudgets || !(category in global._categoryBudgets)) return false;
+  delete global._categoryBudgets[category];
+  return true;
+}
+
 function getDbStatus() {
   return {
     mode: supabase ? 'supabase' : 'memory',
@@ -1099,6 +1245,7 @@ module.exports = {
   findUserByLineId,
   getUsers,
   addExpense,
+  setExpenseCategory,
   getExpenses,
   clearSettlement,
   findLastExpense,
@@ -1143,6 +1290,14 @@ module.exports = {
   completeTodo,
   deleteTodo,
   markTodoReminded,
+  saveBillingRequest,
+  listOpenBillingRequests,
+  markBillingReminded,
+  resolveBillingRequest,
+  resolveBillingRequestsForDebtor,
+  setCategoryBudget,
+  listCategoryBudgets,
+  deleteCategoryBudget,
   getDbStatus,
   terminateUserByName,
   restoreUserByName,

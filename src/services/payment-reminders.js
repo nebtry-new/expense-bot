@@ -4,24 +4,10 @@
 const { listPendingPaymentConfirmations, markPaymentReminded } = require('./db');
 const { buildQuickReplyMessage } = require('../utils/quick-reply');
 
-const TZ_OFFSET_MS = 7 * 60 * 60 * 1000; // เวลาไทย (ไม่มี DST)
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-const reminderHour = () => {
-  const h = Number(process.env.PAYMENT_REMINDER_HOUR);
-  return Number.isInteger(h) && h >= 0 && h <= 23 ? h : 9;
-};
+const { atReminderHourAfterDays, thaiDateTime } = require('../utils/reminder-time');
 
 // เวลา (ms) ที่ควรเตือนครั้งถัดไป = HH:00 เวลาไทยของ "วันถัดจาก" วันของ baseMs
-function nextReminderAt(baseMs) {
-  const localDayStart = Math.floor((baseMs + TZ_OFFSET_MS) / DAY_MS) * DAY_MS;
-  return localDayStart + DAY_MS + reminderHour() * 60 * 60 * 1000 - TZ_OFFSET_MS;
-}
-
-const thaiDate = (ms) => {
-  const d = new Date(ms + TZ_OFFSET_MS);
-  return `${d.getUTCDate()}/${d.getUTCMonth() + 1} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} น.`;
-};
+const nextReminderAt = (baseMs) => atReminderHourAfterDays(baseMs, 1);
 
 // sendPushFn(lineUserId, textOrMessage) ต้องคืน true เมื่อส่งสำเร็จ — ส่งไม่สำเร็จจะไม่นับว่าเตือนแล้ว (รอบหน้าลองใหม่)
 async function runPaymentReminders(sendPushFn, now = Date.now()) {
@@ -41,7 +27,7 @@ async function runPaymentReminders(sendPushFn, now = Date.now()) {
 
     const text = [
       '⏰ ยังไม่ได้ยืนยันรับเงิน',
-      `${pending.debtorName} แจ้งว่าโอน ${pending.amount.toFixed(2)} บาท ให้คุณเมื่อ ${thaiDate(new Date(pending.requestedAt).getTime())}`,
+      `${pending.debtorName} แจ้งว่าโอน ${pending.amount.toFixed(2)} บาท ให้คุณเมื่อ ${thaiDateTime(new Date(pending.requestedAt).getTime())}`,
       'ตรวจยอดเข้าแล้วแตะ "รับแล้ว" เพื่อเคลียร์ยอด',
     ].join('\n');
     try {

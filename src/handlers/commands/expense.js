@@ -1,6 +1,7 @@
 const { parseExpenseText, formatSplitMode } = require('../../utils/parser');
 const { addExpense, logUnrecognizedMessage, logNlMessage, getUsers, getExpenses, getTrips, listUnrecognizedMessages, findLastExpense, findTripByName } = require('../../services/db');
 const { interpretExpenseMessage } = require('../../services/nl-intent');
+const { budgetAlerts, withAlerts } = require('../../services/budgets');
 const { deleteConfirmState, deleteListState } = require('../state');
 
 const MONTH_LABELS = ['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
@@ -138,10 +139,11 @@ async function handleExpenseLines(rawLines, userContext) {
     const total = results.reduce((sum, r) => sum + r.parsed.amount, 0);
     const itemLines = results.map((r) => `• ${r.parsed.description} ${r.parsed.amount.toLocaleString()} บาท (${formatSplitMode(r.parsed.splitMode, r.parsed.numPeople)})`);
 
+    const alerts = await budgetAlerts(results.map((r) => r.saved));
     return {
       type: 'expense_batch',
       results,
-      reply: [`บันทึก ${results.length} รายการแล้ว${backdateNote(userContext)}:`, ...itemLines, `รวม: ${total.toLocaleString()} บาท`].join('\n'),
+      reply: withAlerts([`บันทึก ${results.length} รายการแล้ว${backdateNote(userContext)}:`, ...itemLines, `รวม: ${total.toLocaleString()} บาท`].join('\n'), alerts),
     };
   }
 
@@ -154,11 +156,12 @@ async function handleExpenseLines(rawLines, userContext) {
   }
 
   const result = await writeLine(validated);
+  const alerts = await budgetAlerts([result.saved]);
   return {
     type: 'expense',
     parsed: result.parsed,
     saved: result.saved,
-    reply: `บันทึกค่าใช้จ่ายแล้ว${backdateNote(userContext)}: ${result.parsed.description} ${result.parsed.amount.toLocaleString()} บาท (${formatSplitMode(result.parsed.splitMode, result.parsed.numPeople)})`,
+    reply: withAlerts(`บันทึกค่าใช้จ่ายแล้ว${backdateNote(userContext)}: ${result.parsed.description} ${result.parsed.amount.toLocaleString()} บาท (${formatSplitMode(result.parsed.splitMode, result.parsed.numPeople)})`, alerts),
   };
 }
 
@@ -270,6 +273,7 @@ async function handleNaturalLanguageExpense(text, userContext) {
 
   const lines = [];
   const expenseIds = [];
+  const savedItems = [];
   for (const { item, split, numPeople, tripId, payerUser, customAmounts } of prepared) {
     const saved = await addExpense({
       paidByUserId: payerUser.id,
@@ -283,6 +287,7 @@ async function handleNaturalLanguageExpense(text, userContext) {
       ...(userContext.createdAt ? { createdAt: userContext.createdAt } : {}),
     });
     if (saved?.id) expenseIds.push(saved.id);
+    savedItems.push(saved);
     const payerNote = payerUser.id === sender.id ? '' : ` — ${payerUser.displayName} จ่าย`;
     lines.push(`• ${item.description} ${item.amount.toLocaleString()} บาท (${formatSplitMode(split, numPeople)})${payerNote}`);
 
@@ -301,14 +306,15 @@ async function handleNaturalLanguageExpense(text, userContext) {
 
   await logNlMessage({ ...logBase, outcome: 'saved', expenseIds });
 
+  const alerts = await budgetAlerts(savedItems);
   return {
     type: 'expense_nl',
-    reply: [
+    reply: withAlerts([
       `บันทึกแล้ว${backdateNote(userContext)} (ตีความจากข้อความ ${prepared.length} รายการ):`,
       ...lines,
       '',
       'ถ้าไม่ถูก พิมพ์ ลบรายการ เพื่อเลือกลบ',
-    ].join('\n'),
+    ].join('\n'), alerts),
     quickReplies: [{ label: 'ลบรายการ', text: 'ลบรายการ' }],
   };
 }

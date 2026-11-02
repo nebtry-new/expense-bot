@@ -11,6 +11,7 @@ const { handleMenuPostback } = require('./handlers/commands/menu');
 const { evRouteState, datetimePickerState } = require('./handlers/state');
 const { parseDatetimePickerValue, toLocalDisplay } = require('./utils/parse-date');
 const { runPaymentReminders } = require('./services/payment-reminders');
+const { runBillingReminders } = require('./services/billing-reminders');
 const { runPlannerReminders } = require('./services/planner-reminders');
 const { buildQuickReplyMessage } = require('./utils/quick-reply');
 
@@ -278,6 +279,8 @@ function startNotificationScheduler() {
       schedulerStatus.lastError = null;
       schedulerStatus.runs += 1;
       const reminders = await runPaymentReminders(sendPushMessage);
+      const billing = await runBillingReminders(sendPushMessage);
+      if (billing.sent) console.log('BILLING_REMINDERS_SENT', billing);
       if (reminders.sent) console.log('PAYMENT_REMINDERS_SENT', reminders);
       const planner = await runPlannerReminders(sendPushMessage);
       if (planner.events || planner.todos) console.log('PLANNER_REMINDERS_SENT', planner);

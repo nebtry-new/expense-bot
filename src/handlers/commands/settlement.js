@@ -1,4 +1,4 @@
-const { getUsers, getExpenses, getTrips, clearSettlement, deleteExpenseById, savePaymentConfirmation, getPaymentConfirmation, completePaymentConfirmation } = require('../../services/db');
+const { getUsers, getExpenses, getTrips, clearSettlement, deleteExpenseById, savePaymentConfirmation, getPaymentConfirmation, completePaymentConfirmation, saveBillingRequest, resolveBillingRequestsForDebtor } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
 const { selectScopeExpenses } = require('../../utils/billing');
 const { settlementState, deleteConfirmState, slipConfirmState } = require('../state');
@@ -92,6 +92,13 @@ async function handlePaymentSent(userContext) {
       console.error('PAYMENT_CONFIRMATION_SAVE_FAILED', error.message);
       return { type: 'error', reply: 'บันทึกการแจ้งจ่ายเงินไม่สำเร็จ ยังไม่ได้แจ้ง' + ` ${creditor.displayName} กรุณาลองใหม่ (ถ้าเป็นซ้ำ ตรวจว่ารัน migration_011 ใน Supabase แล้ว)` };
     }
+  }
+
+  // ลูกหนี้แจ้งจ่ายแล้ว → หยุดเตือนค้างชำระ (จากตรงนี้เป็นหน้าที่ของเตือนยืนยันรับเงินแทน)
+  try {
+    await resolveBillingRequestsForDebtor(currentLineUserId);
+  } catch (error) {
+    console.error('BILLING_REQUEST_RESOLVE_FAILED', error.message);
   }
 
   return {
@@ -188,6 +195,12 @@ async function handleConfirmYes(userContext) {
 
   if (pending.debtorLineUserId) {
     agreedAmountByDebtor[pending.debtorLineUserId] = { amount: pending.amount, scope: pending.scope || DEFAULT_SCOPE };
+    // เก็บลง DB ไว้เตือนค้างชำระ 3/7 วัน — ล้มเหลวไม่กระทบการเรียกเก็บ (เตือนเป็นส่วนเสริม)
+    try {
+      await saveBillingRequest({ ...pending, scope: pending.scope || DEFAULT_SCOPE });
+    } catch (error) {
+      console.error('BILLING_REQUEST_SAVE_FAILED', error.message, '(ตรวจว่ารัน migration_015 แล้ว)');
+    }
   }
 
   return {

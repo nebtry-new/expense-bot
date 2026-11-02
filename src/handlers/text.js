@@ -1,5 +1,6 @@
 const { registerUser, getUsers, resetData, terminateUserByName, restoreUserByName, renameUserByLineId, resetState } = require('../services/db');
 const { handleSummary, handleMonthlySummary } = require('./commands/summary');
+const { handleCategorize, handleSetBudget, handleShowBudgets, handleDeleteBudget } = require('./commands/category');
 const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('./commands/settlement');
 const { handleListUnrecognized, handleNaturalLanguageExpense, handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
@@ -35,6 +36,12 @@ const HELP_TEXT = [
   '• สรุปเดือนนี้: สรุปยอดเดือนนี้',
   '• โอนเงินแล้ว: จ่ายแล้ว',
   '• ยืนยันรับเงิน + เคลียร์ยอด: รับแล้ว',
+  '',
+  '━━ 🗂 หมวด & งบรายเดือน ━━',
+  '• ระบบจัดหมวดให้อัตโนมัติ (อาหาร เดินทาง บ้าน/บิล ฯลฯ) ดูแยกหมวดที่: สรุปเดือนนี้',
+  '• รายการเก่า/ที่ยังไม่รู้หมวด: จัดหมวด',
+  '• ตั้งงบ: ตั้งงบ อาหาร 5000 (เตือนเมื่อใช้ถึง 80% และเมื่อเกินงบ)',
+  '• ดูงบ / ลบงบ อาหาร',
   '',
   '━━ 🗑 ลบ / ยกเลิกรายการ ━━',
   '• ยกเลิกรายการล่าสุด: ยกเลิกรายการล่าสุด → ใช่',
@@ -104,7 +111,7 @@ const MAPS_URL_RE = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.
 // Commands that never belong to a free-text flow (datetime picker reply)
 // ลบ 2 / ลบ 1 3 5 / ลบ 1,3 / ลบ 1 และ 3 / ลบ 2-4
 const DELETE_PICK_RE = /^ลบ\s*(\d+(?:\s*(?:-|ถึง)\s*\d+)?(?:(?:\s*,\s*|\s+และ\s+|\s+)\d+(?:\s*(?:-|ถึง)\s*\d+)?)*)$/i;
-const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+[\d\s,\-และถึง]*|ตรวจแจ้งเตือน|สถานะแจ้งเตือน|ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน|วันสำคัญ|งาน|รายการงาน|todo)$|^(เพิ่มวันสำคัญ|ลบวันสำคัญ|เพิ่มงาน|ลบงาน|เสร็จ|สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
+const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+[\d\s,\-และถึง]*|ตรวจแจ้งเตือน|สถานะแจ้งเตือน|ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน|ดูงบ|จัดหมวด|วันสำคัญ|งาน|รายการงาน|todo)$|^(ตั้งงบ|ลบงบ|เพิ่มวันสำคัญ|ลบวันสำคัญ|เพิ่มงาน|ลบงาน|เสร็จ|สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
 
 // ประโยคที่บอกว่าใครจ่าย/เลี้ยงใคร parser เดิมอ่านไม่ออก (มันเห็นแค่ "ชื่อ + ตัวเลข") → ให้ Claude ตีความก่อน
 const NL_CUE_RE = /(ออกให้|เลี้ยง|จ่ายแทน|แฟนออก|แฟนจ่าย|ออกค่า|จ่ายให้|โอนให้|ยืม|คืน|ทด(?:ให้|ไว้|ก่อน)|สำรอง|ฝากจ่าย|ฝากซื้อ|ต้องคืน|ขอคืน)/;
@@ -298,6 +305,13 @@ async function handleTextMessage(text, userContext = {}) {
   if (pickDeleteMatch) {
     return handlePickDeleteExpense(pickDeleteMatch[1], userContext);
   }
+
+  if (/^จัดหมวด$/i.test(normalized)) return handleCategorize();
+  if (/^ดูงบ$/i.test(normalized)) return handleShowBudgets();
+  const setBudgetMatch = normalized.match(/^ตั้งงบ\s*(.*)$/i);
+  if (setBudgetMatch) return handleSetBudget(setBudgetMatch[1]);
+  const delBudgetMatch = normalized.match(/^ลบงบ\s*(.+)$/i);
+  if (delBudgetMatch) return handleDeleteBudget(delBudgetMatch[1].trim());
 
   if (/^(สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้)$/i.test(normalized)) {
     return handleMonthlySummary();

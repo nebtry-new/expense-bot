@@ -1,4 +1,9 @@
-const { getUsers, getExpenses, getTrips } = require('../../services/db');
+const { getUsers, getExpenses, getTrips, listCategoryBudgets } = require('../../services/db');
+const { classifyPending } = require('../../services/categorize');
+const { totalsByCategory } = require('../../services/budgets');
+const { categoryLabel } = require('../../utils/categories');
+const { THAI_MONTHS, thaiYearMonth, sameThaiMonth } = require('../../utils/month');
+const { budgetLine } = require('./category');
 const { calculateBalances } = require('../../utils/balance');
 const { selectBillableExpenses, summarizePendingTrips } = require('../../utils/billing');
 const { formatExpenseLines } = require('../../utils/format');
@@ -80,20 +85,15 @@ async function handleSummary() {
 
 async function handleMonthlySummary() {
   const users = await getUsers();
+  // จัดหมวดรายการที่ยังเป็น "อื่นๆ" ก่อน (กฎก่อน แล้วโมเดลถ้ามี) — ล้มเหลวก็ข้ามได้
+  await classifyPending().catch(() => null);
   const allExpenses = await getExpenses();
 
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
+  const { year, month } = thaiYearMonth(now);
+  const monthName = THAI_MONTHS[month];
 
-  const thaiMonths = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
-  const monthName = thaiMonths[month];
-
-  const thisMonthExpenses = allExpenses.filter((expense) => {
-    if (!expense.createdAt) return false;
-    const d = new Date(expense.createdAt);
-    return d.getFullYear() === year && d.getMonth() === month;
-  });
+  const thisMonthExpenses = allExpenses.filter((expense) => expense.createdAt && sameThaiMonth(expense.createdAt, now));
 
   if (!thisMonthExpenses.length) {
     return { type: 'summary_monthly', reply: `ยังไม่มีค่าใช้จ่ายในเดือน${monthName} ${year}` };
@@ -107,18 +107,38 @@ async function handleMonthlySummary() {
     `รวมทั้งหมด: ${total.toLocaleString()} บาท (${thisMonthExpenses.length} รายการ)`,
   ];
 
+  // แยกหมวด (เรียงจากมากไปน้อย) — หมวดที่ตั้งงบไว้แสดงเทียบงบ แม้เดือนนี้ยังไม่ได้ใช้
+  const budgets = await listCategoryBudgets().catch(() => ({}));
+  const totals = totalsByCategory(thisMonthExpenses, now);
+  const keys = [...new Set([...Object.keys(totals), ...Object.keys(budgets)])]
+    .sort((a, b) => (totals[b] || 0) - (totals[a] || 0));
+  if (keys.length) {
+    lines.push('', 'แยกหมวด:');
+    for (const key of keys) {
+      const used = totals[key] || 0;
+      lines.push(budgets[key]
+        ? budgetLine(key, used, budgets[key])
+        : `${categoryLabel(key)}: ${used.toLocaleString()} บาท (${Math.round((used / total) * 100)}%)`);
+    }
+  }
+
   const oweLines = users.map((user) => {
     const balance = Number(monthlySummary[String(user.id)] ?? 0);
     return { displayName: user.displayName, owes: Math.max(0, -balance) };
   });
 
   if (oweLines.some((u) => u.owes > 0)) {
+    lines.push('');
     for (const u of oweLines) {
       lines.push(`${u.displayName} ค้างจ่าย: ${u.owes.toLocaleString()} บาท`);
     }
   }
 
-  return { type: 'summary_monthly', reply: lines.join('\n') };
+  return {
+    type: 'summary_monthly',
+    reply: lines.join('\n'),
+    quickReplies: [{ label: '💰 ดูงบ', text: 'ดูงบ' }, { label: '🗂 จัดหมวด', text: 'จัดหมวด' }],
+  };
 }
 
 module.exports = { handleSummary, handleMonthlySummary };

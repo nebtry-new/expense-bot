@@ -1,6 +1,7 @@
 const { addExpense, getUsers } = require('../../services/db');
 const { parseCustomSplit, formatSplitMode } = require('../../utils/parser');
 const { slipConfirmState } = require('../state');
+const { budgetAlerts, withAlerts } = require('../../services/budgets');
 
 async function handleSlipConfirm(userContext) {
   const lineUserId = userContext.lineUserId || 'unknown';
@@ -20,10 +21,11 @@ async function handleSlipConfirm(userContext) {
     customAmounts: null,
   });
 
+  const alerts = await budgetAlerts([saved]);
   return {
     type: 'expense',
     saved,
-    reply: `บันทึกแล้ว: ${pending.description} ${Number(pending.amount).toLocaleString()} บาท (${formatSplitMode('half')})`,
+    reply: withAlerts(`บันทึกแล้ว: ${pending.description} ${Number(pending.amount).toLocaleString()} บาท (${formatSplitMode('half')})`, alerts),
   };
 }
 
@@ -98,10 +100,11 @@ async function handleSlipOverride(text, userContext) {
     customAmounts,
   });
 
+  const alerts = await budgetAlerts([saved]);
   return {
     type: 'expense',
     saved,
-    reply: `บันทึกแล้ว: ${pending.description} ${Number(pending.amount).toLocaleString()} บาท (${formatSplitMode(splitMode, numPeople)})`,
+    reply: withAlerts(`บันทึกแล้ว: ${pending.description} ${Number(pending.amount).toLocaleString()} บาท (${formatSplitMode(splitMode, numPeople)})`, alerts),
   };
 }
 

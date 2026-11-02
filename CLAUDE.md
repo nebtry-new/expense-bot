@@ -39,7 +39,7 @@ expense-bot/
 │   ├── richmenu-guide.js     ← สร้างภาพ guide จาก definitions (ต้องมี rsvg-convert)
 │   ├── golden-runner.js      ← รันประโยคตัวอย่างผ่าน handleTextMessage แล้วตรวจผล
 │   └── eval-nl.js            ← `npm run eval:nl` ประเมินโมเดลจริง (ใช้เครดิต API)
-├── supabase/                 ← schema.sql + migration_001…011
+├── supabase/                 ← schema.sql + migration_001…015
 ├── test/
 │   ├── golden/nl-sentences.json  ← ประโยคตัวอย่าง + ผลที่ควรได้ (เพิ่มที่นี่ก่อนแก้บั๊ก NL)
 │   └── *.test.js
@@ -155,6 +155,16 @@ payment_confirmations (
   requested_at timestamptz, last_reminded_at timestamptz, confirmed_at timestamptz
 )
 
+-- งบรายเดือนต่อหมวด (migration_014) — category = key ใน utils/categories.js
+category_budgets ( category text PK, monthly_limit numeric(10,2), updated_at timestamptz )
+
+-- ข้อเสนอเรียกเก็บที่ส่งให้ลูกหนี้แล้ว ไว้เตือนค้างชำระ (migration_015) — resolved_at NULL = ยังค้าง
+billing_requests (
+  id uuid PK, debtor_line_user_id text, creditor_line_user_id text,
+  debtor_name text, creditor_name text, amount numeric(10,2), scope jsonb,
+  requested_at timestamptz, reminded_3_at timestamptz, reminded_7_at timestamptz, resolved_at timestamptz
+)
+
 -- ทริปท่องเที่ยว
 trips (
   id                  uuid PK,
@@ -215,6 +225,8 @@ trips (
 - `supabase/migration_009_unrecognized_messages.sql` ← log ข้อความที่ตีความไม่ได้ (คำสั่ง `ข้อความที่ไม่เข้าใจ`)
 - `supabase/migration_008_trip_billable.sql` ← trips.is_billable (ทริปใหม่ไม่รวมใน สรุป จนกว่าจะ ปิดทริป)
 - `supabase/migration_012_events_todos.sql` ← Sprint 3: special_events + todos
+- `supabase/migration_014_category_budgets.sql` ← Sprint 5: งบรายเดือนต่อหมวด (ไม่รันก็ใช้อย่างอื่นได้ แต่ ตั้งงบ/ดูงบ จะ error)
+- `supabase/migration_015_billing_requests.sql` ← Sprint 5: เตือนลูกหนี้ค้างจ่าย 3/7 วัน (ไม่รัน = ไม่มีเตือน การเรียกเก็บยังปกติ)
 
 ### Sprint 2 — Trip Assistant ✅ เสร็จแล้ว
 
@@ -263,11 +275,11 @@ trips (
 - **สุ่มร้านอาหาร** — paste Google Maps link → bot ดึงข้อมูลเอง → สุ่มเลือก
 - **ของขวัญ** — wishlist ของแต่ละคน + gift history ป้องกันซ้ำ + bot hint ให้อีกฝ่ายตอนใกล้วันพิเศษ
 
-### Sprint 5 — Data & Automation (ยังไม่เริ่ม)
+### Sprint 5 — Data & Automation ✅ เสร็จแล้ว (ต้องรัน migration_014 และ 015 ก่อน deploy)
 
-- **แยกหมวดค่าใช้จ่าย** — AI auto-classify อัตโนมัติ (rule-based keyword → Claude fallback) ไม่ต้องพิมพ์เพิ่ม
-- **สรุปรายเดือนแยกหมวด** — ดูยอดแต่ละหมวด + ตั้งงบ + แจ้งเตือนใกล้เกิน
-- **Reminder ค้างชำระ** — push แจ้งเตือนอัตโนมัติถ้าไม่จ่ายภายใน 3 วัน / 7 วัน หลังเรียกเก็บ (ต้องย้าย settlement state ลง DB + cron)
+- **แยกหมวดค่าใช้จ่าย** — จัดอัตโนมัติทุกครั้งที่บันทึก (`addExpense` เรียก `classifyByRules` ใน `utils/categories.js`: keyword ตามลำดับ เจาะจงมาก่อน เช่น ค่าน้ำมัน→เดินทาง ก่อน ค่าน้ำ→บิล) ที่กฎจัดไม่ได้เป็น `other` → `services/categorize.js` ให้ Claude จัดเป็นชุด (เห็นแค่ชื่อรายการ เลือกได้เฉพาะ key ใน whitelist ไม่แน่ใจต้องตอบ other ไม่ถามซ้ำต่อโปรเซส ล้มเหลวข้ามเงียบๆ) เรียกอัตโนมัติตอน `สรุปเดือนนี้` หรือสั่งเองด้วย `จัดหมวด` (กฎก่อน → โมเดลเฉพาะที่เหลือ; ครอบรายการเก่าที่เป็น other ด้วย)
+- **สรุปเดือนนี้แยกหมวด + งบ** — `สรุปเดือนนี้` แสดงยอดแต่ละหมวดเรียงมาก→น้อยพร้อมเทียบงบ (เดือนนับตามเวลาไทย); `ตั้งงบ อาหาร 5000` / `ดูงบ` / `ลบงบ อาหาร` (`commands/category.js`, ตาราง `category_budgets` migration_014, งบของทั้งคู่ร่วมกัน นับยอดเต็มของรายการ); เตือนตอนบันทึกรายการที่ทำให้ยอดเดือนนี้ **ข้าม 80%** และ **ข้าม 100%** ของงบ (เตือนครั้งเดียวต่อเส้น ไม่เตือนซ้ำทุกรายการ; `services/budgets.js` ต่อท้ายคำตอบของทุกทางที่บันทึก: พิมพ์ปกติ/หลายบรรทัด/NL/slip)
+- **เตือนค้างชำระ** — หลังเจ้าหนี้ตอบ `ใช่` (เรียกเก็บ) ระบบบันทึกลง `billing_requests` (migration_015) แล้วตัวรัน 60 วิเดิมเตือน**ลูกหนี้** 09:00 น. (เวลาไทย) ของวันที่ 3 และวันที่ 7 พร้อมปุ่ม จ่ายแล้ว (`services/billing-reminders.js`) — ก่อนเตือนตรวจซ้ำว่ายังมียอดค้างจริง (ถ้าไม่มีแล้ว ปิดเรื่องเงียบๆ), ลูกหนี้กด `จ่ายแล้ว` = หยุดเตือน (ต่อด้วยเตือนยืนยันรับเงินของเจ้าหนี้), ถ้าเซิร์ฟเวอร์ดับข้ามทั้งสองวันส่งครั้งเดียว (ข้อความ 7 วัน), ส่งไม่สำเร็จลองใหม่รอบหน้า; ถ้ายังไม่รัน migration_015 การเรียกเก็บยังใช้ได้ปกติ แค่ไม่มีเตือน (log `BILLING_REQUEST_SAVE_FAILED`)
 
 ### Sprint 6 — Nice to have (ยังไม่เริ่ม)
 
