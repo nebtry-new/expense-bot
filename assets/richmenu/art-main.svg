@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2500" height="1686" viewBox="0 0 2500 1686">
+<rect width="2500" height="1686" fill="#FFF6E5"/>
+<rect x="0" y="0" width="1250" height="150" fill="#3FA882"/>
+<text x="625" y="106" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="88" font-weight="700" text-anchor="middle" fill="#FFF6E5">หน้าหลัก</text>
+<rect x="1250" y="0" width="1250" height="150" fill="#EADFC8"/>
+<text x="1875" y="106" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="88" font-weight="700" text-anchor="middle" fill="#A58B78">เพิ่มเติม</text>
+<rect x="0" y="144" width="2500" height="6" fill="#8FD3B6"/>
+<rect x="26" y="176" width="781" height="716" rx="56" fill="#FFFDF7" stroke="#8FD3B6" stroke-width="8"/>
+<circle cx="416.5" cy="434" r="172" fill="#BFE8D4"/>
+<g transform="translate(416.5 434) scale(1.3)"><rect x="-58" y="-70" width="100" height="130" rx="14" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M-34 -32h52M-34 -6h52M-34 20h28" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M62 -52l22 22-60 66-30 8 8-30z" fill="#3FA882" stroke="#5C3D2E" stroke-width="9" stroke-linejoin="round" transform="translate(-4 4) scale(.85)"/></g>
+<text x="416.5" y="768" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">บันทึกค่าใช้จ่าย</text>
+<rect x="859" y="176" width="782" height="716" rx="56" fill="#FFFDF7" stroke="#8FD3B6" stroke-width="8"/>
+<circle cx="1250" cy="434" r="172" fill="#BFE8D4"/>
+<g transform="translate(1250 434) scale(1.3)"><path d="M-70 70h140" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="-56" y="0" width="30" height="62" rx="6" fill="#3FA882" stroke="#5C3D2E" stroke-width="9"/>
+    <rect x="-15" y="-38" width="30" height="100" rx="6" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="9"/>
+    <rect x="26" y="-74" width="30" height="136" rx="6" fill="#3FA882" stroke="#5C3D2E" stroke-width="9"/></g>
+<text x="1250" y="768" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">สรุปยอด</text>
+<rect x="1693" y="176" width="781" height="716" rx="56" fill="#FFF1D6" stroke="#C9822F" stroke-width="8"/>
+<circle cx="2083.5" cy="434" r="172" fill="#F6D9A8"/>
+<g transform="translate(2083.5 434) scale(1.3)"><path d="M-64 -26h112M26 -56l30 30-30 30" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M64 28h-112M-26 -2l-30 30 30 30" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 4)"/></g>
+<text x="2083.5" y="768" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">จ่าย/รับเงิน</text>
+<rect x="26" y="944" width="781" height="716" rx="56" fill="#FFFDF7" stroke="#8FD3B6" stroke-width="8"/>
+<circle cx="416.5" cy="1202" r="172" fill="#BFE8D4"/>
+<g transform="translate(416.5 1202) scale(1.3)"><path d="M-62 -52h124" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M-22 -52v-22h44v22" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M-48 -52l8 118a10 10 0 0 0 10 9h60a10 10 0 0 0 10-9l8-118z" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11" stroke-linejoin="round"/>
+    <path d="M-16 -16v58M16 -16v58" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="416.5" y="1536" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">ลบรายการ</text>
+<rect x="859" y="944" width="782" height="716" rx="56" fill="#FFFDF7" stroke="#8FD3B6" stroke-width="8"/>
+<circle cx="1250" cy="1202" r="172" fill="#BFE8D4"/>
+<g transform="translate(1250 1202) scale(1.3)"><path d="M-78 -8L82 -70 38 78 4 22z" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11" stroke-linejoin="round"/>
+    <path d="M82 -70L4 22l-4 52 -20 -42" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="1250" y="1536" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">ทริป</text>
+<rect x="1693" y="944" width="781" height="716" rx="56" fill="#FFFDF7" stroke="#8FD3B6" stroke-width="8"/>
+<circle cx="2083.5" cy="1202" r="172" fill="#BFE8D4"/>
+<g transform="translate(2083.5 1202) scale(1.3)"><path d="M-70 -56h140a10 10 0 0 1 10 10v82a10 10 0 0 1-10 10H-6l-42 36v-36h-22a10 10 0 0 1-10-10v-82a10 10 0 0 1 10-10z" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11" stroke-linejoin="round"/>
+    <circle cx="-36" cy="-4" r="9" fill="#3FA882"/><circle cx="0" cy="-4" r="9" fill="#3FA882"/><circle cx="36" cy="-4" r="9" fill="#3FA882"/></g>
+<text x="2083.5" y="1536" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">ถามข้อมูล</text>
+</svg>
