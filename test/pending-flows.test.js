@@ -148,3 +148,18 @@ test('เปิดทริป takes a closed trip back out of สรุป', as
   const summary = await handleTextMessage('สรุป', u1);
   assert.ok(summary.reply.includes('ไม่มียอดค้างจ่าย'));
 });
+
+test('ลบรายการ orders same-timestamp expenses newest-first and ลบ 1 deletes the one shown as 1', async () => {
+  await setup();
+  await handleTextMessage('ค่าอาหาร 100\nค่ากาแฟ 50\nค่าน้ำมัน 300', u1); // batch → timestamps can tie
+
+  const list = await handleTextMessage('ลบรายการ', u1);
+  const first = list.reply.split('\n').find((l) => l.startsWith('1.'));
+  assert.ok(first.includes('ค่าน้ำมัน'), first);
+
+  const prompt = await handleTextMessage('ลบ 1', u1);
+  assert.ok(prompt.reply.includes('ค่าน้ำมัน'));
+  await handleTextMessage('ใช่', u1);
+  const left = (await getExpenses()).map((e) => e.description).sort();
+  assert.deepEqual(left, ['ค่ากาแฟ', 'ค่าอาหาร']);
+});

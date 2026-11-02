@@ -251,12 +251,14 @@ async function handleListDeletableExpenses(keyword, userContext) {
   const tripsMap = Object.fromEntries(trips.map((t) => [t.id, t.name]));
   const kw = (keyword || '').replace(/^#/, '').trim().toLowerCase();
 
+  // getExpenses() เรียงเก่า→ใหม่; รายการที่ createdAt ซ้ำกัน (เช่นพิมพ์หลายบรรทัดในข้อความเดียว) ใช้ลำดับเดิมตัดสิน
+  const indexOf = new Map(expenses.map((e, i) => [e.id, i]));
   const candidates = expenses
     .filter((e) => String(e.paidByUserId) === String(currentUser.id) && !e.isCleared)
     .filter((e) => !kw
       || String(e.description || '').toLowerCase().includes(kw)
       || String(tripsMap[e.tripId] || '').toLowerCase().includes(kw))
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .sort((a, b) => (new Date(b.createdAt) - new Date(a.createdAt)) || (indexOf.get(b.id) - indexOf.get(a.id)))
     .slice(0, DELETE_LIST_LIMIT);
 
   if (!candidates.length) {
