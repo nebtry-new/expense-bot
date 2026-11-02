@@ -9,7 +9,8 @@ const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocati
 const { evRouteState } = require('./state');
 const { normalizeThaiNumbers } = require('../utils/thai-numbers');
 const { extractDatePhrase } = require('../utils/date-phrases');
-const { clearAllState, slipConfirmState, datetimePickerState, deleteConfirmState, deleteListState } = require('./state');
+const { dispatchOtherIntent } = require('./commands/nl-dispatch');
+const { clearAllState, slipConfirmState, datetimePickerState, deleteConfirmState, deleteListState, nlCommandState } = require('./state');
 
 const HELP_TEXT = [
   '📖 คู่มือการใช้งาน',
@@ -21,6 +22,8 @@ const HELP_TEXT = [
   '• หารตามจำนวนคน: ค่าทัวร์ 3000 หาร 3 คน',
   '• หลายรายการ: พิมพ์ขึ้นบรรทัดใหม่ทีละรายการ',
   '• พิมพ์เป็นประโยคธรรมดาก็ได้: เลี้ยงข้าวแฟน 450 / ปิ๊กยืมแจม 500 / คืนแจม 500',
+  '• ถามได้เลย: เดือนนี้ใช้ไปเท่าไหร่ / กินกาแฟไปเท่าไหร่ / ตอนนี้ใครต้องจ่ายใคร / รายการล่าสุด',
+  '• สั่งงานด้วยประโยคได้: ได้เงินจากแจมแล้ว / ทริปหัวหินจบแล้วเก็บเงินได้เลย (เรื่องเงินจะถามยืนยันก่อน)',
   '• ใส่วันย้อนหลังได้: เมื่อวานกินข้าว 100 / 3 วันก่อน ค่าน้ำมัน 500',
   '• หลายรายการในประโยคเดียว: ข้าว 100 กาแฟ 50',,
   '• ส่งรูป slip: บอทอ่านยอดให้ แล้วตอบ ใช่ / ไม่หาร / หาร 3 / ยกเลิก',
@@ -60,6 +63,7 @@ const HELP_TEXT = [
   '━━ ⏰ แจ้งเตือน ━━',
   '• เลือกจากปฏิทิน: แจ้งเตือนใหม่',
   '• พิมพ์วันเอง: แจ้งเตือน 25 ธ.ค. 09:00 เช็คกระเป๋า',
+  '• พูดแบบคน: เตือนพรุ่งนี้บ่ายสาม ซื้อนม / เตือนอีก 2 ชั่วโมง เอาผ้าออก / เตือนวันศุกร์หน้า 9 โมงเช้า โทรหาแม่',
   '• แจ้งทั้งคู่: เติม ทั้งคู่ หรือ #ชื่อทริป ท้ายข้อความ',
   '• ดูที่รออยู่: ดูแจ้งเตือน',
   '• ยกเลิก: ยกเลิกแจ้งเตือน [เลข]',
@@ -87,6 +91,9 @@ const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ
 
 // ประโยคที่บอกว่าใครจ่าย/เลี้ยงใคร parser เดิมอ่านไม่ออก (มันเห็นแค่ "ชื่อ + ตัวเลข") → ให้ Claude ตีความก่อน
 const NL_CUE_RE = /(ออกให้|เลี้ยง|จ่ายแทน|แฟนออก|แฟนจ่าย|ออกค่า|จ่ายให้|โอนให้|ยืม|คืน|ทด(?:ให้|ไว้|ก่อน)|สำรอง|ฝากจ่าย|ฝากซื้อ|ต้องคืน|ขอคืน)/;
+
+// คำถาม: parser เดิมเห็นตัวเลขในประโยคแล้วบันทึกเป็นรายการ (เช่น ถามว่าใช้ไป 3 ครั้งไหม จะกลายเป็น 3 บาท) จึงส่งให้โมเดลก่อน
+const QUESTION_CUE_RE = /(เท่าไหร่|เท่าไร|กี่(?:บาท|ครั้ง|รายการ)|ไหม(?!้)|หรือเปล่า|หรือยัง|\?)/;
 
 function isSlipReply(text) {
   return YES_RE.test(text)
@@ -117,6 +124,11 @@ function dropStalePendingFlows(text, lineUserId) {
     delete deleteConfirmState.pendingByUser[lineUserId];
   }
 
+  const nlPending = nlCommandState.pendingByUser[lineUserId];
+  if (nlPending && (!(YES_RE.test(text) || CANCEL_RE.test(text)) || Date.now() - nlPending.createdAt > 10 * 60 * 1000)) {
+    delete nlCommandState.pendingByUser[lineUserId];
+  }
+
   if (deleteListState.pendingByUser[lineUserId] && !/^ลบ\s*\d+$/.test(text)) {
     delete deleteListState.pendingByUser[lineUserId];
   }
@@ -124,6 +136,13 @@ function dropStalePendingFlows(text, lineUserId) {
   if (datetimePickerState.pendingByUser[lineUserId] && COMMAND_RE.test(text)) {
     delete datetimePickerState.pendingByUser[lineUserId];
   }
+}
+
+// ผลจาก NL layer: ถ้าเป็น intent อื่น (คำสั่ง/ตั้งเตือน/ถามข้อมูล) ให้ส่งต่อ ไม่ใช่ก็คืนตามเดิม
+async function finishNl(nl, userContext) {
+  if (nl.type !== 'nl_other') return nl;
+  const dispatched = await dispatchOtherIntent(nl.other, userContext, (text) => handleTextMessage(text, userContext));
+  return dispatched || { type: 'noop', reply: 'ขอโทษครับ ยังไม่เข้าใจข้อความนี้ พิมพ์ help เพื่อดูคำสั่ง' };
 }
 
 async function handleTextMessage(text, userContext = {}) {
@@ -135,6 +154,14 @@ async function handleTextMessage(text, userContext = {}) {
   }
 
   dropStalePendingFlows(normalized, lineUserId);
+
+  // ผู้ใช้ตอบรับ/ปฏิเสธคำสั่งที่ AI ตีความไว้
+  const pendingNl = nlCommandState.pendingByUser[lineUserId];
+  if (pendingNl) {
+    delete nlCommandState.pendingByUser[lineUserId];
+    if (YES_RE.test(normalized)) return handleTextMessage(pendingNl.canonical, userContext);
+    return { type: 'noop', reply: 'ยกเลิกแล้ว' };
+  }
 
   if (/^(help|ช่วยเหลือ|manual|คู่มือ)$/i.test(normalized)) {
     return { type: 'help', reply: HELP_TEXT };
@@ -314,6 +341,12 @@ async function handleTextMessage(text, userContext = {}) {
     return handleScheduleNotification(notifMatch[1].trim(), lineUserId);
   }
 
+  // "เตือนพรุ่งนี้บ่ายสามซื้อนม" (ไม่มีคำว่า แจ้ง และไม่ใช่ แจ้งเตือนใหม่)
+  const remindMatch = normalized.match(/^เตือน\s*(.+)$/i);
+  if (remindMatch) {
+    return handleScheduleNotification(remindMatch[1].trim(), lineUserId);
+  }
+
   if (/^ดูแจ้งเตือน$/i.test(normalized)) {
     return handleListNotifications();
   }
@@ -358,12 +391,16 @@ async function handleTextMessage(text, userContext = {}) {
   const expenseContext = createdAt ? { ...userContext, createdAt } : userContext;
 
   const inputLines = expenseText.split('\n').map((l) => l.trim()).filter(Boolean);
-  if (inputLines.length === 1 && NL_CUE_RE.test(expenseText)) {
+  const isQuestion = QUESTION_CUE_RE.test(expenseText);
+  if (inputLines.length === 1 && (NL_CUE_RE.test(expenseText) || isQuestion)) {
     const cued = await handleNaturalLanguageExpense(expenseText, expenseContext);
-    if (cued) return cued;
+    if (cued) return finishNl(cued, userContext);
     // ยืมเงินแต่ตีความไม่ได้ → อย่าให้ parser เดิมบันทึกเป็นหารครึ่งแบบเงียบๆ
     if (/ยืม/.test(expenseText)) {
       return { type: 'error', reply: 'ไม่แน่ใจว่าใครยืมใคร กรุณาพิมพ์ เช่น ปิ๊กยืมแจม 500 (คนยืม + ยืม + คนให้ยืม + ยอด)' };
+    }
+    if (isQuestion) {
+      return { type: 'noop', reply: 'ขอโทษครับ ยังไม่เข้าใจคำถามนี้ ลองถามใหม่ เช่น เดือนนี้ใช้ไปเท่าไหร่ หรือ ตอนนี้ใครต้องจ่ายใคร' };
     }
   }
 
@@ -373,6 +410,7 @@ async function handleTextMessage(text, userContext = {}) {
   // parser เดิมหาจำนวนเงินไม่เจอ → ลองให้ Claude ตีความข้อความภาษาธรรมชาติ
   const nlResult = await handleNaturalLanguageExpense(expenseText, expenseContext);
   if (!nlResult) return result;
+  if (nlResult.type === 'nl_other') return finishNl(nlResult, userContext);
   // ข้อความที่ไม่มีตัวเลข (ทักทาย/คุยเล่น) ไม่ต้องรายงานว่า AI ล้ม — ตอบเงียบๆ แบบเดิม
   if (nlResult.type === 'error' && !/\d/.test(expenseText)) return result;
   return nlResult;

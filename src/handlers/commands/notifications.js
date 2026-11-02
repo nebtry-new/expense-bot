@@ -1,5 +1,6 @@
 const { scheduleNotification, listPendingNotifications, cancelNotificationById } = require('../../services/db');
 const { parseNotificationInput, toLocalDisplay } = require('../../utils/parse-date');
+const { parseRelativeReminder } = require('../../utils/relative-time');
 
 function handleShowDatetimePicker() {
   const now = new Date();
@@ -52,9 +53,17 @@ async function handleScheduleNotification(input, lineUserId) {
   const broadcast = HAS_TRIP_TAG || BROADCAST_KW.test(input);
   const cleanInput = input.replace(BROADCAST_KW, '').trim();
 
-  const parsed = parseNotificationInput(cleanInput);
+  let parsed = parseNotificationInput(cleanInput);
   if (!parsed) {
-    return { type: 'error', reply: 'รูปแบบไม่ถูกต้อง เช่น แจ้งเตือน 25 ธ.ค. 09:00 เช็คกระเป๋า' };
+    // พูดแบบคน: "พรุ่งนี้บ่ายสามซื้อนม", "อีก 2 ชั่วโมง ...", "วันศุกร์หน้า 9 โมงเช้า ..."
+    const rel = parseRelativeReminder(cleanInput);
+    if (rel?.error === 'past') return { type: 'error', reply: 'วันเวลาที่ระบุผ่านไปแล้ว กรุณาระบุเวลาในอนาคต' };
+    if (rel?.error === 'no_message') return { type: 'error', reply: 'ระบุข้อความที่จะให้เตือนด้วย เช่น เตือนพรุ่งนี้บ่ายสาม ซื้อนม' };
+    if (rel?.error === 'bad_time') return { type: 'error', reply: 'เวลาไม่ถูกต้อง' };
+    if (rel?.scheduledAt) parsed = rel;
+  }
+  if (!parsed) {
+    return { type: 'error', reply: 'อ่านวันเวลาไม่ออก ลองพิมพ์ เช่น เตือนพรุ่งนี้บ่ายสาม ซื้อนม หรือ แจ้งเตือน 25 ธ.ค. 09:00 เช็คกระเป๋า' };
   }
 
   const { scheduledAt, message } = parsed;

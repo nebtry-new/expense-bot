@@ -220,6 +220,12 @@ async function handleNaturalLanguageExpense(text, userContext) {
     interpreted: interpreted.ok ? interpreted.expenses : interpreted.raw,
   };
 
+  // โมเดลบอกว่าไม่ใช่การบันทึกค่าใช้จ่าย แต่เป็นคำสั่ง/ตั้งเตือน/ถามข้อมูล → ให้ text.js ส่งต่อ
+  if (!interpreted.ok && interpreted.reason === 'other_intent') {
+    await logNlMessage({ ...logBase, outcome: 'routed', reason: interpreted.other.intent, interpreted: interpreted.other });
+    return { type: 'nl_other', other: interpreted.other };
+  }
+
   if (!interpreted.ok) {
     await logNlMessage({ ...logBase, outcome: 'failed', reason: interpreted.reason });
     // เก็บเฉพาะข้อความที่ดูเหมือนพยายามบันทึกเงิน (มีตัวเลขหรือคำบอกการจ่าย/ยืม) ไม่เก็บคำทักทาย

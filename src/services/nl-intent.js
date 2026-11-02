@@ -1,4 +1,5 @@
 const Anthropic = require('@anthropic-ai/sdk');
+const { KINDS: QUESTION_KINDS, PERIODS: QUESTION_PERIODS } = require('./queries');
 
 const MODEL = process.env.NL_MODEL || 'claude-haiku-5-5';
 const TIMEOUT_MS = 8000;
@@ -12,13 +13,20 @@ const client = process.env.ANTHROPIC_API_KEY
 
 const callsByUser = {};
 
+// คำสั่งที่โมเดลเลือกได้ (map ไปคำสั่งเดิมใน nl-dispatch.js) — รายการนี้คือ whitelist
+const COMMAND_NAMES = [
+  'summary', 'monthly_summary', 'list_trips', 'trip_summary', 'create_trip', 'close_trip', 'open_trip',
+  'list_deletable', 'delete_last', 'payment_sent', 'payment_received', 'confirm_billing',
+  'list_notifications', 'cancel_notification', 'help',
+];
+
 const EXPENSE_TOOL = {
   name: 'record_expenses',
   description: 'บันทึกรายการค่าใช้จ่ายที่ผู้ใช้พิมพ์มา ถ้าข้อความไม่ใช่การบันทึกค่าใช้จ่ายหรือจำนวนเงินไม่ชัดเจน ให้ intent เป็น unknown',
   input_schema: {
     type: 'object',
     properties: {
-      intent: { type: 'string', enum: ['add_expense', 'unknown'] },
+      intent: { type: 'string', enum: ['add_expense', 'command', 'reminder', 'question', 'unknown'] },
       confidence: { type: 'number', description: '0-1 ความมั่นใจว่าตีความถูก' },
       expenses: {
         type: 'array',
@@ -38,15 +46,58 @@ const EXPENSE_TOOL = {
         },
       },
     },
-    required: ['intent', 'confidence', 'expenses'],
+    required: ['intent', 'confidence'],
   },
 };
 
-function buildSystemPrompt({ senderName, partnerName, tripNames }) {
+Object.assign(EXPENSE_TOOL.input_schema.properties, {
+  command: {
+    type: 'object',
+    description: 'ใช้เมื่อ intent=command',
+    properties: {
+      name: { type: 'string', enum: COMMAND_NAMES },
+      trip_name: { type: ['string', 'null'] },
+      keyword: { type: ['string', 'null'], description: 'ใช้กับ list_deletable: คำค้นชื่อรายการ' },
+      number: { type: ['integer', 'null'], description: 'ใช้กับ cancel_notification: ลำดับแจ้งเตือน' },
+    },
+    required: ['name'],
+  },
+  reminder: {
+    type: 'object',
+    description: 'ใช้เมื่อ intent=reminder',
+    properties: {
+      when_local: { type: 'string', description: 'เวลาไทย รูปแบบ YYYY-MM-DDTHH:mm คำนวณจากเวลาปัจจุบันที่ให้ไว้' },
+      message: { type: 'string', description: 'ข้อความที่ให้เตือน ไม่รวมวันเวลา' },
+      both: { type: 'boolean', description: 'true ถ้าให้เตือนทั้งคู่' },
+    },
+    required: ['when_local', 'message'],
+  },
+  question: {
+    type: 'object',
+    description: 'ใช้เมื่อ intent=question (ถามข้อมูลค่าใช้จ่าย)',
+    properties: {
+      kind: { type: 'string', enum: QUESTION_KINDS },
+      period: { type: 'string', enum: QUESTION_PERIODS },
+      keywords: { type: 'array', items: { type: 'string' }, description: 'คำค้นชื่อรายการ รวมคำพ้อง เช่น หมวดอาหาร → [อาหาร, ข้าว, กาแฟ, ก๋วยเตี๋ยว]' },
+      payer: { type: 'string', enum: ['me', 'partner', 'any'] },
+      trip_name: { type: ['string', 'null'] },
+      limit: { type: ['integer', 'null'] },
+    },
+    required: ['kind'],
+  },
+});
+
+function thaiNowLabel(now) {
+  const local = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const days = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+  return `${local.toISOString().slice(0, 16)} (วัน${days[local.getUTCDay()]})`;
+}
+
+function buildSystemPrompt({ senderName, partnerName, tripNames, now = new Date() }) {
   const me = senderName || 'ฉัน';
   const other = partnerName || 'แฟน';
   return [
-    'คุณเป็นตัวแปลงข้อความภาษาไทยของคู่รักที่แชร์ค่าใช้จ่ายกัน ให้เรียก tool record_expenses เสมอ',
+    'คุณเป็นตัวแปลงข้อความภาษาไทยของคู่รักที่แชร์ค่าใช้จ่ายกัน ให้เรียก tool record_expenses เสมอ และเลือก intent ที่ตรงที่สุด',
     `ผู้ส่งข้อความ = "me"${senderName ? ` (ชื่อ ${senderName})` : ''}, แฟน = "partner"${partnerName ? ` (ชื่อ ${partnerName})` : ''}`,
     `ทริปที่มีอยู่: ${tripNames.length ? tripNames.join(', ') : '(ไม่มี)'}`,
     '',
@@ -69,6 +120,20 @@ function buildSystemPrompt({ senderName, partnerName, tripNames }) {
     '  - ข้อความที่ตามหลังจำนวนเงิน (เช่น "ไปทำบุญ", "ซื้อกาแฟ") คือวัตถุประสงค์ ใส่ใน description ไม่มีผลต่อทิศทางหนี้',
     '',
     '- "ของขวัญ" ไม่ได้แปลว่า none: ถ้าไม่ได้บอกชัดว่าไม่หาร/ส่วนตัว/ออกให้แฟน ให้ใช้ half; ถ้าบอกว่าซื้อให้แฟนโดยไม่เอาเงิน (เช่น "ซื้อของขวัญให้แฟน 500 ไม่ต้องหาร") จึงใช้ none',
+    '',
+    `เวลาปัจจุบัน (ไทย): ${thaiNowLabel(now)}`,
+    '',
+    'intent อื่นนอกจากบันทึกค่าใช้จ่าย:',
+    '- command: ผู้ใช้สั่งงานบอต เลือก command.name จากรายการ:',
+    '  summary=ขอดู/สรุปยอดค้างจ่าย, monthly_summary=สรุปเดือนนี้, list_trips=ดูทริปทั้งหมด, trip_summary=สรุป/เรียกเก็บทริป (trip_name),',
+    '  create_trip=สร้างทริปใหม่ (trip_name), close_trip=ทริปจบแล้วพร้อมเรียกเก็บ (trip_name), open_trip=ยังไม่เก็บเงินทริปนี้ (trip_name),',
+    '  list_deletable=ขอลบ/แก้รายการ (keyword ถ้ามี), delete_last=ลบรายการล่าสุด, payment_sent=บอกว่าโอนเงินให้แฟนแล้ว,',
+    '  payment_received=บอกว่าได้รับเงินจากแฟนแล้ว, confirm_billing=ให้เรียกเก็บเงินแฟน, list_notifications=ดูแจ้งเตือน,',
+    '  cancel_notification=ยกเลิกแจ้งเตือน (number), help=ขอความช่วยเหลือ',
+    '- reminder: ผู้ใช้ให้ตั้งเตือน ต้องคำนวณ when_local เป็นเวลาไทยจากเวลาปัจจุบัน (บ่ายสาม=15:00, ทุ่มนึง=19:00) ถ้าไม่ระบุเวลาให้ใช้ 09:00; message ไม่รวมวันเวลา',
+    '- question: ผู้ใช้ถามข้อมูลค่าใช้จ่าย เช่น ใช้ไปเท่าไหร่ (kind=total, period, keywords), ใครต้องจ่ายใคร (balance), รายการล่าสุด (recent), ยอดทริป (trip_total)',
+    '  อย่าตอบตัวเลขเอง แค่ระบุ kind/period/keywords — ระบบจะคำนวณเอง',
+    '- ข้อความที่ไม่เข้าข่ายอะไรเลย → unknown',
     'กฎ: amount ต้องมาจากตัวเลขในข้อความจริงเท่านั้น ห้ามเดา ถ้าไม่มีตัวเลขหรือไม่แน่ใจให้ intent=unknown',
     'ถ้าข้อความไม่ใช่การบันทึกค่าใช้จ่าย (ทักทาย, ถามคำถาม, สั่งงานอื่น) ให้ intent=unknown',
     'trip_name ใช้ได้เฉพาะชื่อที่อยู่ในรายการทริปด้านบน มิฉะนั้นใส่ null',
@@ -278,7 +343,30 @@ function applyLoanDirection(expenses, text, names) {
 }
 
 // Returns { ok: true, expenses } | { ok: false, reason }
+function validateOtherIntent(result) {
+  if (result.intent === 'command') {
+    const c = result.command || {};
+    if (!COMMAND_NAMES.includes(c.name)) return { ok: false, reason: 'unknown' };
+    return { ok: false, reason: 'other_intent', other: { intent: 'command', name: c.name, tripName: c.trip_name || null, keyword: c.keyword || null, number: Number.isInteger(c.number) ? c.number : null } };
+  }
+  if (result.intent === 'reminder') {
+    const r = result.reminder || {};
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(String(r.when_local || '')) || !String(r.message || '').trim()) return { ok: false, reason: 'unknown' };
+    return { ok: false, reason: 'other_intent', other: { intent: 'reminder', whenLocal: r.when_local, message: String(r.message).trim(), both: Boolean(r.both) } };
+  }
+  if (result.intent === 'question') {
+    const q = result.question || {};
+    if (!QUESTION_KINDS.includes(q.kind)) return { ok: false, reason: 'unknown' };
+    return { ok: false, reason: 'other_intent', other: { intent: 'question', kind: q.kind, period: q.period, keywords: Array.isArray(q.keywords) ? q.keywords.slice(0, 8) : [], payer: q.payer, tripName: q.trip_name || null, limit: q.limit || null } };
+  }
+  return null;
+}
+
 function validateInterpretation(result, originalText) {
+  if (result && ['command', 'reminder', 'question'].includes(result.intent)) {
+    if (Number(result.confidence) < MIN_CONFIDENCE) return { ok: false, reason: 'low_confidence' };
+    return validateOtherIntent(result);
+  }
   if (!result || result.intent !== 'add_expense' || !Array.isArray(result.expenses) || !result.expenses.length) {
     return { ok: false, reason: 'unknown' };
   }
@@ -361,4 +449,4 @@ async function interpretExpenseMessage(text, context, userId = 'unknown') {
   }
 }
 
-module.exports = { interpretExpenseMessage, validateInterpretation, detectBorrower, detectRepayer, parseLoanMessage, parseRepaymentMessage, numbersInText, __setInterpreter, __resetRateLimit };
+module.exports = { COMMAND_NAMES, interpretExpenseMessage, validateInterpretation, detectBorrower, detectRepayer, parseLoanMessage, parseRepaymentMessage, numbersInText, __setInterpreter, __resetRateLimit };
