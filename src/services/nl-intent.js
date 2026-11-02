@@ -336,25 +336,28 @@ function validateInterpretation(result, originalText) {
 // Returns { ok, expenses } | { ok: false, reason }. Never throws.
 async function interpretExpenseMessage(text, context, userId = 'unknown') {
   const trimmed = String(text || '').trim();
-  if (!trimmed || trimmed.length > MAX_TEXT_LENGTH) return { ok: false, reason: 'bad_length' };
+  if (!trimmed || trimmed.length > MAX_TEXT_LENGTH) return { ok: false, reason: 'bad_length', source: 'none' };
 
   const direct = parseLoanMessage(trimmed, context) || parseRepaymentMessage(trimmed, context);
-  if (direct) return { ok: true, expenses: [direct] };
+  if (direct) return { ok: true, expenses: [direct], source: 'code', latencyMs: 0 };
 
-  if (!isAvailable()) return { ok: false, reason: 'not_configured' };
-  if (!allowCall(userId)) return { ok: false, reason: 'rate_limited' };
+  if (!isAvailable()) return { ok: false, reason: 'not_configured', source: 'none' };
+  if (!allowCall(userId)) return { ok: false, reason: 'rate_limited', source: 'none' };
+
+  const startedAt = Date.now();
+  const meta = () => ({ source: 'model', model: MODEL, latencyMs: Date.now() - startedAt });
 
   try {
     const result = await interpreter(trimmed, { tripNames: [], ...context });
     const validated = validateInterpretation(result, trimmed);
-    if (!validated.ok) return validated;
-    return { ok: true, expenses: applyLoanDirection(validated.expenses, trimmed, context) };
+    if (!validated.ok) return { ...validated, ...meta(), raw: result };
+    return { ok: true, expenses: applyLoanDirection(validated.expenses, trimmed, context), ...meta() };
   } catch (err) {
     console.error('NL_INTERPRET_FAILED', err?.message || err);
     const body = err?.error?.error || err?.error || {};
     const message = String(body.message || err?.message || '');
-    if (/credit balance/i.test(message)) return { ok: false, reason: 'credit_exhausted' };
-    return { ok: false, reason: 'api_error' };
+    if (/credit balance/i.test(message)) return { ok: false, reason: 'credit_exhausted', ...meta() };
+    return { ok: false, reason: 'api_error', ...meta() };
   }
 }
 

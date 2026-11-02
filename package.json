@@ -9,7 +9,8 @@
     "test": "node --test",
     "db:schema": "cat supabase/schema.sql",
     "db:check": "node -e \"const { getDbStatus } = require('./src/services/db'); console.log(JSON.stringify(getDbStatus(), null, 2));\"",
-    "eval:nl": "node scripts/eval-nl.js"
+    "eval:nl": "node scripts/eval-nl.js",
+    "export:nl-log": "node scripts/export-nl-log.js"
   },
   "keywords": [
     "line",

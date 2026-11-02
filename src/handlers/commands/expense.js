@@ -1,5 +1,5 @@
 const { parseExpenseText, formatSplitMode } = require('../../utils/parser');
-const { addExpense, logUnrecognizedMessage, getUsers, getExpenses, getTrips, listUnrecognizedMessages, findLastExpense, findTripByName } = require('../../services/db');
+const { addExpense, logUnrecognizedMessage, logNlMessage, getUsers, getExpenses, getTrips, listUnrecognizedMessages, findLastExpense, findTripByName } = require('../../services/db');
 const { interpretExpenseMessage } = require('../../services/nl-intent');
 const { deleteConfirmState, deleteListState } = require('../state');
 
@@ -209,7 +209,19 @@ async function handleNaturalLanguageExpense(text, userContext) {
     tripNames: trips.map((t) => t.name),
   }, lineUserId);
 
+  // ข้อมูลสำหรับ log วิเคราะห์ (nl_message_log) — เติม outcome/expenseIds ตอนจบ
+  const logBase = {
+    lineUserId,
+    text,
+    route: interpreted.source,
+    model: interpreted.model,
+    latencyMs: interpreted.latencyMs,
+    hasDate: Boolean(userContext.createdAt),
+    interpreted: interpreted.ok ? interpreted.expenses : interpreted.raw,
+  };
+
   if (!interpreted.ok) {
+    await logNlMessage({ ...logBase, outcome: 'failed', reason: interpreted.reason });
     // เก็บเฉพาะข้อความที่ดูเหมือนพยายามบันทึกเงิน (มีตัวเลขหรือคำบอกการจ่าย/ยืม) ไม่เก็บคำทักทาย
     if (/\d|ยืม|คืน|เลี้ยง|ออกให้|จ่าย/.test(text)) {
       await logUnrecognizedMessage({ lineUserId, text, reason: interpreted.reason });
@@ -222,6 +234,7 @@ async function handleNaturalLanguageExpense(text, userContext) {
   const prepared = [];
   for (const item of interpreted.expenses) {
     if ((item.payer === 'partner' || item.split === 'custom') && !partner) {
+      await logNlMessage({ ...logBase, outcome: 'rejected', reason: 'no_partner' });
       return { type: 'error', reply: 'ยังไม่มีผู้ใช้คนที่ 2 ในระบบ จึงบันทึกรายการแบบนี้ไม่ได้' };
     }
 
@@ -230,6 +243,7 @@ async function handleNaturalLanguageExpense(text, userContext) {
     if (item.tripName) {
       const trip = trips.find((t) => (t.name || '').toLowerCase() === item.tripName.toLowerCase());
       if (!trip) {
+        await logNlMessage({ ...logBase, outcome: 'rejected', reason: 'trip_not_found' });
         return { type: 'error', reply: `ไม่พบทริป "${item.tripName}" สร้างก่อนด้วย: สร้างทริป ${item.tripName}` };
       }
       tripId = trip.id;
@@ -248,8 +262,9 @@ async function handleNaturalLanguageExpense(text, userContext) {
   }
 
   const lines = [];
+  const expenseIds = [];
   for (const { item, split, numPeople, tripId, payerUser, customAmounts } of prepared) {
-    await addExpense({
+    const saved = await addExpense({
       paidByUserId: payerUser.id,
       paidByDisplayName: payerUser.displayName,
       description: item.description,
@@ -260,6 +275,7 @@ async function handleNaturalLanguageExpense(text, userContext) {
       tripId,
       ...(userContext.createdAt ? { createdAt: userContext.createdAt } : {}),
     });
+    if (saved?.id) expenseIds.push(saved.id);
     const payerNote = payerUser.id === sender.id ? '' : ` — ${payerUser.displayName} จ่าย`;
     lines.push(`• ${item.description} ${item.amount.toLocaleString()} บาท (${formatSplitMode(split, numPeople)})${payerNote}`);
 
@@ -275,6 +291,8 @@ async function handleNaturalLanguageExpense(text, userContext) {
       }
     }
   }
+
+  await logNlMessage({ ...logBase, outcome: 'saved', expenseIds });
 
   return {
     type: 'expense_nl',

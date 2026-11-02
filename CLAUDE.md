@@ -132,6 +132,16 @@ unrecognized_messages (
   created_at   timestamptz
 )
 
+-- log ทุกข้อความที่ผ่าน NL layer (migration_010) — export ด้วย `npm run export:nl-log > nl-log.jsonl`
+nl_message_log (
+  id uuid PK, line_user_id text, text text,
+  route text,        -- code | model | none
+  model text, outcome text,   -- saved | failed | rejected
+  reason text, interpreted jsonb,
+  expense_ids text[],         -- id หายจาก expenses ภายหลัง = ถูกลบ (ตีความผิด)
+  has_date boolean, latency_ms int, created_at timestamptz
+)
+
 -- ทริปท่องเที่ยว
 trips (
   id                  uuid PK,
@@ -187,6 +197,7 @@ trips (
 - `supabase/migration_002_add_trip_id_to_expenses.sql`
 - `supabase/migration_003_trip_default_split.sql`
 - `supabase/migration_004_trip_places_car_profile.sql` ← Sprint 2
+- `supabase/migration_010_nl_message_log.sql` ← log ทุกข้อความที่ผ่าน NL layer (route/outcome/ผลตีความ/expense_ids) ไว้วิเคราะห์
 - `supabase/migration_009_unrecognized_messages.sql` ← log ข้อความที่ตีความไม่ได้ (คำสั่ง `ข้อความที่ไม่เข้าใจ`)
 - `supabase/migration_008_trip_billable.sql` ← trips.is_billable (ทริปใหม่ไม่รวมใน สรุป จนกว่าจะ ปิดทริป)
 
@@ -205,6 +216,7 @@ trips (
 - ตัดสินด้วยโค้ดเอง (ไม่เรียกโมเดล): ยืม (`ปิ๊กยืมแจม 500`, `แจมให้ยืม 500`), คืนเงิน (`คืนแจม 500`), เลขไทย (`สามร้อย`, `สองพันห้า`), วันที่ย้อนหลัง (`เมื่อวาน`, `3 วันก่อน`, `วันเสาร์ที่แล้ว`), หลายรายการในประโยคเดียว (`ข้าว 100 กาแฟ 50`)
 - ชุดประโยคตัวอย่าง: `test/golden/nl-sentences.json` — `npm test` รันส่วนที่ตัดสินด้วยโค้ด, `npm run eval:nl` รันส่วนที่ต้องใช้โมเดลจริง (ใช้เครดิต) — เจอประโยคที่ผิดให้เพิ่มเข้าไฟล์นี้ก่อนแก้
 - quirk เดิมของ parser: ชื่อรายการที่ลงท้าย "แฟน" ติดตัวเลข (เช่น `ค่าของขวัญแฟน 800`) ถูกอ่านเป็น "แฟน 800" = ส่วนของแฟน 800 บาท (แฟนจ่ายคืนเต็ม)
+- **เก็บข้อมูลไว้วิเคราะห์ (Phase next):** ทุกข้อความที่ผ่าน NL layer ถูกบันทึกใน `nl_message_log` — เฟสถัดไปให้ export (`npm run export:nl-log`) แล้ว: (1) นับประโยค `route=model` ที่ซ้ำบ่อยที่สุด → ย้ายเป็นกฎในโค้ด (ประหยัดเครดิต/แม่นกว่า) (2) ดู `deleted_after_save` + `outcome=failed/rejected` → หาประโยคที่ตีความผิด เพิ่มเข้า `test/golden/nl-sentences.json` ก่อนแก้
 - Phase 2: ครอบคำสั่งอื่น (สรุป/ลบ/ทริป) — ต้องถามยืนยันก่อนทำเรื่องเงิน
 - Phase 3: แจ้งเตือนแบบภาษาธรรมชาติ ("พรุ่งนี้บ่ายสาม")
 - Phase 4: ถามตอบข้อมูล ("เดือนนี้ค่าอาหารเท่าไหร่")

@@ -44,6 +44,7 @@ async function resetData() {
   tripPlaces.length = 0;
   carProfile = null;
   global._unrecognized = [];
+  global._nlLog = [];
   resetState.pendingReset = false;
 }
 
@@ -656,6 +657,46 @@ async function logUnrecognizedMessage({ lineUserId = null, text, reason = null }
   }
 }
 
+// เก็บทุกข้อความที่ผ่าน NL layer เพื่อวิเคราะห์ภายหลัง (best effort — ห้ามกระทบการตอบผู้ใช้)
+async function logNlMessage(entry) {
+  const row = {
+    line_user_id: entry.lineUserId || null,
+    text: entry.text,
+    route: entry.route || null,
+    model: entry.model || null,
+    outcome: entry.outcome,
+    reason: entry.reason || null,
+    interpreted: entry.interpreted || null,
+    expense_ids: (entry.expenseIds || []).map(String),
+    has_date: Boolean(entry.hasDate),
+    latency_ms: Number.isFinite(entry.latencyMs) ? Math.round(entry.latencyMs) : null,
+  };
+  try {
+    if (supabase) {
+      const { error } = await supabase.from('nl_message_log').insert(row);
+      if (error) throw error;
+      return;
+    }
+    if (!global._nlLog) global._nlLog = [];
+    global._nlLog.push({ ...row, created_at: new Date().toISOString() });
+  } catch (err) {
+    console.error('LOG_NL_MESSAGE_FAILED', err?.message || err);
+  }
+}
+
+async function listNlMessages({ limit = 1000 } = {}) {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('nl_message_log')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return data || [];
+  }
+  return [...(global._nlLog || [])].reverse().slice(0, limit);
+}
+
 async function listUnrecognizedMessages(limit = 10) {
   if (supabase) {
     const { data, error } = await supabase
@@ -782,6 +823,8 @@ module.exports = {
   setCarProfile,
   logUnrecognizedMessage,
   listUnrecognizedMessages,
+  logNlMessage,
+  listNlMessages,
   scheduleNotification,
   getPendingNotifications,
   markNotificationSent,
