@@ -106,17 +106,42 @@ test('menu_money shows the current balance and offers the existing money command
   assert.deepEqual(m.quickReply.items.map((i) => i.action.text), ['เรียกเก็บเงิน', 'จ่ายแล้ว', 'รับแล้ว']);
 });
 
-test('menu_trip lists real trip names (long names truncated, at most 4 trips)', async () => {
+test('menu_trip lists real trips as postback buttons (at most 8, labels truncated)', async () => {
   await setup();
   for (const name of ['หัวหิน', 'เชียงใหม่', 'ภูเก็ต', 'กระบี่', 'ทริปที่มีชื่อยาวมากๆๆๆๆๆๆๆๆๆๆๆๆๆๆๆๆ']) await createTrip(name);
   const m = await handleMenuPostback('action=menu_trip', u1);
   assertValidQuickReply(m);
   const commands = m.quickReply.items.map((i) => i.action.text || i.action.fillInText);
-  assert.equal(commands.filter((c) => c.startsWith('สรุปทริป ')).length, 4);
+  const tripButtons = m.quickReply.items.filter((i) => i.action.type === 'postback' && i.action.data.startsWith('action=menu_trip_detail'));
+  assert.equal(tripButtons.length, 5);
   assert.ok(commands.includes('ทริป') && commands.includes('สร้างทริป '));
-  // ข้อความที่ส่งจริงยังเป็นชื่อเต็ม แม้ label จะถูกตัด
-  const longOne = m.quickReply.items.find((i) => i.action.text?.includes('ชื่อยาว'));
-  if (longOne) assert.ok([...longOne.action.label].length <= MAX_LABEL);
+  // displayText (ที่ผู้ใช้เห็นในแชต) เป็นชื่อเต็ม แม้ label จะถูกตัด
+  assert.ok(tripButtons.some((i) => i.action.displayText.includes('ชื่อยาว')));
+});
+
+test('menu_trip_detail: ปุ่มของทริปนั้น (สรุป/โน้ต/ที่เที่ยว/เส้นทาง/เพิ่ม/ปิดทริป) และสลับปิด↔เปิดตามสถานะ', async () => {
+  await setup();
+  const trip = await createTrip('หัวหิน');
+  const m = await handleMenuPostback(`action=menu_trip_detail&id=${encodeURIComponent(trip.id)}`, u1);
+  assertValidQuickReply(m);
+  const cmds = m.quickReply.items.map((i) => i.action.text || i.action.fillInText);
+  assert.deepEqual(cmds, ['สรุปทริป หัวหิน', 'โน้ต หัวหิน', 'ที่เที่ยว หัวหิน', 'เส้นทางทริป หัวหิน', 'โน้ตทริป #หัวหิน ', 'เพิ่มที่ #หัวหิน ', 'ปิดทริป หัวหิน']);
+
+  await handleTextMessage('ปิดทริป หัวหิน', u1);
+  const closed = await handleMenuPostback(`action=menu_trip_detail&id=${encodeURIComponent(trip.id)}`, u1);
+  assert.equal(closed.quickReply.items.at(-1).action.text, 'เปิดทริป หัวหิน');
+
+  const gone = await handleMenuPostback('action=menu_trip_detail&id=nope', u1);
+  assert.ok(gone.text.includes('ไม่พบทริป'));
+});
+
+test('menu_trip_detail: ชื่อทริปที่มีช่องว่างไม่มีปุ่มเพิ่ม (แท็ก # ใช้ไม่ได้) แต่ปุ่มอื่นยังส่งชื่อเต็ม', async () => {
+  await setup();
+  const trip = await createTrip('ทริป เชียงใหม่');
+  const m = await handleMenuPostback(`action=menu_trip_detail&id=${encodeURIComponent(trip.id)}`, u1);
+  const cmds = m.quickReply.items.map((i) => i.action.text || i.action.fillInText);
+  assert.ok(cmds.includes('สรุปทริป ทริป เชียงใหม่'));
+  assert.ok(!cmds.some((c) => c.includes('#')));
 });
 
 test('menu_ask / menu_ev / menu_record / unknown', async () => {

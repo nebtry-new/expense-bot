@@ -25,6 +25,17 @@ const fillItem = (label, fillInText) => ({
   action: { type: 'postback', label: truncate(label), data: 'action=noop', inputOption: 'openKeyboard', fillInText },
 });
 
+// ปุ่มที่ส่ง postback (ผู้ใช้เห็นเป็นข้อความ displayText ในแชต)
+const postbackItem = (label, data, displayText = label) => ({
+  type: 'action',
+  action: { type: 'postback', label: truncate(label), data, displayText: truncate(displayText, 300) },
+});
+
+// #แท็ก ใช้ได้เฉพาะชื่อที่ไม่มีช่องว่าง/อักขระพิเศษ (ตรงกับ regex ใน trip.js)
+const isTaggable = (name) => /^[฀-๿a-zA-Z0-9_]+$/.test(name);
+
+const MAX_TRIP_BUTTONS = 8;
+
 const withQuickReplies = (text, items) => ({
   type: 'text',
   text,
@@ -32,7 +43,8 @@ const withQuickReplies = (text, items) => ({
 });
 
 async function handleMenuPostback(data, userContext = {}) {
-  const action = String(data || '').replace(/^action=/, '');
+  const params = new URLSearchParams(String(data || ''));
+  const action = params.get('action') || '';
 
   if (action === 'menu_record') {
     // ถ้า LINE ส่ง event มาหลังเปิดคีย์บอร์ด ให้ตัวอย่างสั้นๆ (ถ้าไม่ส่งมา ก็ไม่เสียหาย)
@@ -49,12 +61,33 @@ async function handleMenuPostback(data, userContext = {}) {
   }
 
   if (action === 'menu_trip') {
-    const trips = (await getTrips()).slice(0, 4);
+    const trips = (await getTrips()).slice(0, MAX_TRIP_BUTTONS);
     const items = [sayItem('ดูทริปทั้งหมด', 'ทริป')];
-    for (const t of trips) items.push(sayItem(`สรุป ${t.name}`, `สรุปทริป ${t.name}`));
+    for (const t of trips) items.push(postbackItem(`✈️ ${t.name}`, `action=menu_trip_detail&id=${encodeURIComponent(t.id)}`, t.name));
     items.push(fillItem('สร้างทริปใหม่', 'สร้างทริป '));
-    const hint = trips.length ? 'เลือกทริปที่ต้องการสรุป หรือสร้างทริปใหม่' : 'ยังไม่มีทริป สร้างทริปใหม่ได้เลย';
-    return withQuickReplies(`✈️ ทริป\n${hint}\n(ปิดทริปเมื่อพร้อมเรียกเก็บ: ปิดทริป ชื่อ)`, items);
+    const hint = trips.length ? 'เลือกทริปเพื่อดูสรุป โน้ต สถานที่ หรือปิดทริป' : 'ยังไม่มีทริป สร้างทริปใหม่ได้เลย';
+    return withQuickReplies(`✈️ ทริป\n${hint}`, items);
+  }
+
+  if (action === 'menu_trip_detail') {
+    const trip = (await getTrips()).find((t) => String(t.id) === params.get('id'));
+    if (!trip) return { type: 'text', text: 'ไม่พบทริปนี้แล้ว (อาจถูกลบ) แตะ ทริป ในเมนูเพื่อเลือกใหม่' };
+    const n = trip.name;
+    const items = [
+      sayItem('📊 สรุปทริป', `สรุปทริป ${n}`),
+      sayItem('📝 ดูโน้ต', `โน้ต ${n}`),
+      sayItem('📍 ที่เที่ยว', `ที่เที่ยว ${n}`),
+      sayItem('🗺 เส้นทาง', `เส้นทางทริป ${n}`),
+    ];
+    if (isTaggable(n)) {
+      items.push(fillItem('➕ เพิ่มโน้ต', `โน้ตทริป #${n} `));
+      items.push(fillItem('➕ เพิ่มที่เที่ยว', `เพิ่มที่ #${n} `));
+    }
+    items.push(trip.is_billable === true
+      ? sayItem('เปิดทริปอีกครั้ง', `เปิดทริป ${n}`)
+      : sayItem('✅ ปิดทริป (เรียกเก็บได้)', `ปิดทริป ${n}`));
+    const state = trip.is_billable === true ? 'ปิดทริปแล้ว (รวมใน สรุป)' : 'ยังไม่ปิดทริป (ยังไม่รวมใน สรุป)';
+    return withQuickReplies(`✈️ ${n}\n${state}\nเลือกสิ่งที่ต้องการ`, items);
   }
 
   if (action === 'menu_ask') {
