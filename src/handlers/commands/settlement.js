@@ -1,7 +1,8 @@
 const { getUsers, getExpenses, getTrips, clearSettlement, deleteExpenseById, savePaymentConfirmation, getPaymentConfirmation, completePaymentConfirmation, saveBillingRequest, resolveBillingRequestsForDebtor } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
 const { selectScopeExpenses } = require('../../utils/billing');
-const { settlementState, deleteConfirmState, slipConfirmState } = require('../state');
+const { settlementState, deleteConfirmState, slipConfirmState, giftConfirmState } = require('../state');
+const { handleConfirmGift } = require('./gifts');
 const { handleSlipConfirm } = require('./slip');
 
 // เก็บยอดและขอบเขต (scope) ที่ตกลงกันไว้ (creditor กด ใช่) เพื่อให้ debtor ใช้ตอนกด จ่ายแล้ว
@@ -153,6 +154,8 @@ async function handleConfirmYes(userContext) {
       quickReplies: [{ label: 'ลบต่อ', text: 'ลบรายการ' }],
     };
   }
+
+  if (giftConfirmState.pendingByUser[currentLineUserId]) return handleConfirmGift(currentLineUserId);
 
   const slipResult = await handleSlipConfirm(userContext);
   if (slipResult) {

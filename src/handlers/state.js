@@ -10,6 +10,7 @@ const restaurantListState = { pendingByUser: {} }; // { [userId]: [restaurantId]
 const restaurantPickState = { pendingByUser: {} }; // { [userId]: restaurantId } ร้านที่สุ่มได้ล่าสุด (ปุ่ม ไปกินแล้ว)
 const wishListState = { pendingByUser: {} }; // { [userId]: [wishId] } wishlist ของตัวเองที่แสดงล่าสุด
 const partnerWishState = { pendingByUser: {} }; // { [userId]: [wishId] } wishlist ของแฟนที่แสดงล่าสุด (ให้ของขวัญแฟน [เลข])
+const giftConfirmState = { pendingByUser: {} }; // { [userId]: { title, price, wishId } } ของขวัญที่รอพิมพ์ ใช่ ก่อนบันทึก
 const evRouteState = { pendingByUser: {} };
 const datetimePickerState = { pendingByUser: {} }; // { scheduledAt: Date }
 
@@ -27,7 +28,8 @@ function clearAllState() {
   restaurantPickState.pendingByUser = {};
   wishListState.pendingByUser = {};
   partnerWishState.pendingByUser = {};
+  giftConfirmState.pendingByUser = {};
   datetimePickerState.pendingByUser = {};
 }
 
-module.exports = { settlementState, deleteConfirmState, deleteListState, nlCommandState, notifListState, eventListState, todoListState, restaurantListState, restaurantPickState, wishListState, partnerWishState, slipConfirmState, evRouteState, datetimePickerState, clearAllState };
+module.exports = { settlementState, deleteConfirmState, deleteListState, nlCommandState, notifListState, eventListState, todoListState, restaurantListState, restaurantPickState, wishListState, partnerWishState, giftConfirmState, slipConfirmState, evRouteState, datetimePickerState, clearAllState };

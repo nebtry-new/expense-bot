@@ -4,7 +4,8 @@ const { getTrips, listRestaurants, getTripPlaces, markTripPlaceVisitedById, dele
 const { handleListNotes, handleListPlaces } = require('./trip');
 const { handleListTodos, handleListEvents } = require('./planner');
 const { answerForUser } = require('./nl-dispatch');
-const { deleteListState, deleteConfirmState, nlCommandState, notifListState, eventListState, todoListState, restaurantListState, restaurantPickState, wishListState, partnerWishState } = require('../state');
+const { cancelItem } = require('../../utils/quick-reply');
+const { deleteListState, deleteConfirmState, nlCommandState, notifListState, eventListState, todoListState, restaurantListState, restaurantPickState, wishListState, partnerWishState, giftConfirmState } = require('../state');
 
 const MAX_QUICK_REPLIES = 13;
 const MAX_LABEL = 20;
@@ -41,8 +42,6 @@ const MAX_TRIP_BUTTONS = 8;
 const MAX_PLACE_BUTTONS = 11; // + ปุ่ม กลับ + ปุ่ม ยกเลิก = 13
 
 // ทุกเมนูย่อยมีปุ่ม ✖ ยกเลิก เป็นปุ่มสุดท้าย (กันคนงงถ้าไม่อยากทำอะไรต่อ) — กันที่ไว้ 1 ช่องจากขีดจำกัด 13
-const CANCEL_DATA = 'action=menu_cancel';
-const cancelItem = () => postbackItem('✖ ยกเลิก', CANCEL_DATA, 'ยกเลิก');
 
 const withQuickReplies = (text, items) => ({
   type: 'text',
@@ -52,7 +51,7 @@ const withQuickReplies = (text, items) => ({
 
 // ยกเลิก = ไม่ทำอะไรต่อ: ล้างลิสต์/คำขอยืนยันที่ค้างจากเมนู เพื่อไม่ให้เลขที่พิมพ์ทีหลังไปทำกับรายการที่ทิ้งไปแล้ว
 // (ไม่แตะ flow เรื่องเงิน/สลิป/EV ที่เป็นงานของตัวเอง)
-const CANCELLABLE_STATES = [deleteListState, deleteConfirmState, nlCommandState, notifListState, eventListState, todoListState, restaurantListState, restaurantPickState, wishListState, partnerWishState];
+const CANCELLABLE_STATES = [deleteListState, deleteConfirmState, nlCommandState, notifListState, eventListState, todoListState, restaurantListState, restaurantPickState, wishListState, partnerWishState, giftConfirmState];
 function clearMenuState(lineUserId) {
   for (const state of CANCELLABLE_STATES) delete state.pendingByUser[lineUserId];
 }

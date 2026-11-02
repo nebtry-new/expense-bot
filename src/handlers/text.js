@@ -15,7 +15,7 @@ const { normalizeThaiNumbers } = require('../utils/thai-numbers');
 const { extractDatePhrase } = require('../utils/date-phrases');
 const { dispatchOtherIntent, answerForUser } = require('./commands/nl-dispatch');
 const { MENU_QUESTIONS } = require('./commands/menu');
-const { clearAllState, settlementState, slipConfirmState, datetimePickerState, deleteConfirmState, deleteListState, nlCommandState } = require('./state');
+const { clearAllState, settlementState, slipConfirmState, datetimePickerState, deleteConfirmState, deleteListState, nlCommandState, giftConfirmState } = require('./state');
 
 const HELP_TEXT = [
   '📖 คู่มือการใช้งาน',
@@ -161,6 +161,10 @@ function dropStalePendingFlows(text, lineUserId) {
     delete deleteConfirmState.pendingByUser[lineUserId];
   }
 
+  if (giftConfirmState.pendingByUser[lineUserId] && !YES_RE.test(text) && !CANCEL_RE.test(text)) {
+    delete giftConfirmState.pendingByUser[lineUserId];
+  }
+
   const nlPending = nlCommandState.pendingByUser[lineUserId];
   if (nlPending && (!(YES_RE.test(text) || CANCEL_RE.test(text)) || Date.now() - nlPending.createdAt > 10 * 60 * 1000)) {
     delete nlCommandState.pendingByUser[lineUserId];
@@ -196,6 +200,12 @@ async function handleTextMessage(text, userContext = {}) {
   // ปุ่ม "ไม่ลบ"/"ยกเลิก" ระหว่างเลือก/ยืนยันการลบ (flow ถูกล้างไปแล้วใน dropStalePendingFlows)
   if (hadDeleteFlow && CANCEL_RE.test(normalized)) {
     return { type: 'noop', reply: 'ยกเลิกแล้ว' };
+  }
+
+  // ยกเลิกระหว่างรอยืนยันของขวัญ — ไม่บันทึกอะไร
+  if (CANCEL_RE.test(normalized) && giftConfirmState.pendingByUser[lineUserId]) {
+    delete giftConfirmState.pendingByUser[lineUserId];
+    return { type: 'noop', reply: 'ยกเลิกแล้ว ไม่ได้บันทึกของขวัญ' };
   }
 
   // ปุ่ม "ยังก่อน" ที่ข้อเสนอเรียกเก็บเงิน — ทิ้งข้อเสนอที่ค้าง ไม่ส่งแจ้งเตือนอะไร

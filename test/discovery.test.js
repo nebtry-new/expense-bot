@@ -123,28 +123,66 @@ test('wishlist: จดของที่อยากได้ ดูของแ
   assert.equal((await listWishItems({ ownerLineUserId: 'u1' })).length, 1);
 });
 
-test('ให้ของขวัญแฟน: บันทึกประวัติ ปิด wishlist ที่ตรงกัน เตือนซ้ำต้องยืนยัน', async () => {
+test('ให้ของขวัญแฟน: แสดงตัวอย่างก่อน ยังไม่บันทึกจนกว่าจะพิมพ์ ใช่ แล้วปิด wishlist ที่ตรงกัน', async () => {
   await setup();
   await handleTextMessage('อยากได้ นาฬิกา 2500', u1);
   await handleTextMessage('อยากได้ กระเป๋า 1200', u1);
   await handleTextMessage('ของขวัญแฟน', u2);
 
-  const byNumber = await handleTextMessage('ให้ของขวัญแฟน 1', u2); // นาฬิกา จาก wishlist ของ u1
-  assert.equal(byNumber.type, 'gift_given');
-  assert.ok(byNumber.reply.includes('นาฬิกา') && byNumber.reply.includes('ค่าของขวัญ'), byNumber.reply);
-  assert.deepEqual((await listWishItems({ ownerLineUserId: 'u1' })).map((w) => w.title), ['กระเป๋า']); // นาฬิกาปิดแล้ว
+  const preview = await handleTextMessage('ให้ของขวัญแฟน 1', u2); // นาฬิกา จาก wishlist ของ u1
+  assert.equal(preview.type, 'gift_confirm');
+  assert.ok(preview.reply.includes('ให้: ปิ๊ก') && preview.reply.includes('นาฬิกา') && preview.reply.includes('จะปิดใน wishlist'), preview.reply);
+  assert.deepEqual(preview.quickReplies.map((q) => q.text), ['ใช่', 'ยกเลิก']);
+  assert.equal((await listGifts()).length, 0, 'ยังไม่บันทึกก่อนยืนยัน');
+  assert.equal((await listWishItems({ ownerLineUserId: 'u1' })).length, 2);
+
+  const done = await handleTextMessage('ใช่', u2);
+  assert.equal(done.type, 'gift_given');
+  assert.ok(done.reply.includes('นาฬิกา') && done.reply.includes('ค่าของขวัญ'), done.reply);
+  assert.equal((await listGifts()).length, 1);
+  assert.deepEqual((await listWishItems({ ownerLineUserId: 'u1' })).map((w) => w.title), ['กระเป๋า']);
+
+  assert.equal((await handleTextMessage('ใช่', u2)).type !== 'gift_given', true); // ใช่ ซ้ำ ไม่บันทึกซ้ำ
+  assert.equal((await listGifts()).length, 1);
+});
+
+test('ให้ของขวัญแฟน: ยกเลิก / พิมพ์อย่างอื่นคั่น / อีกคนพิมพ์ ใช่ → ไม่บันทึก', async () => {
+  await setup();
+  const typed = await handleTextMessage('ให้ของขวัญแฟน นาฬิกา 2500', u2);
+  assert.equal(typed.type, 'gift_confirm');
+  const cancelled = await handleTextMessage('ยกเลิก', u2);
+  assert.ok(cancelled.reply.includes('ไม่ได้บันทึกของขวัญ'), cancelled.reply);
+  await handleTextMessage('ใช่', u2);
+  assert.equal((await listGifts()).length, 0);
+
+  await handleTextMessage('ให้ของขวัญแฟน หูฟัง 3500', u2);
+  await handleTextMessage('สรุป', u2); // ข้อความอื่นคั่น → ทิ้งรายการที่รอยืนยัน
+  await handleTextMessage('ใช่', u2);
+  assert.equal((await listGifts()).length, 0);
+
+  await handleTextMessage('ให้ของขวัญแฟน หูฟัง 3500', u2);
+  await handleTextMessage('ใช่', u1); // อีกคนยืนยันแทนไม่ได้
+  assert.equal((await listGifts()).length, 0);
+  assert.equal((await handleTextMessage('ใช่', u2)).type, 'gift_given');
+  assert.equal((await listGifts()).length, 1);
+});
+
+test('ให้ของขวัญแฟน: ซ้ำกับที่เคยให้ → ตัวอย่างมีคำเตือน แต่ยืนยันแล้วบันทึกได้', async () => {
+  await setup();
+  await handleTextMessage('ให้ของขวัญแฟน นาฬิกา 2500', u2);
+  await handleTextMessage('ใช่', u2);
 
   const dup = await handleTextMessage('ให้ของขวัญแฟน นาฬิกา Casio 3000', u2);
-  assert.equal(dup.type, 'gift_duplicate');
-  assert.ok(dup.reply.includes('เคยให้'), dup.reply);
-  assert.equal((await listGifts()).length, 1); // ยังไม่บันทึก
-  assert.equal(dup.quickReplies[0].text, 'ให้ของขวัญแฟน นาฬิกา Casio 3000 ยืนยัน');
-
-  assert.equal((await handleTextMessage(dup.quickReplies[0].text, u2)).type, 'gift_given');
+  assert.equal(dup.type, 'gift_confirm');
+  assert.ok(dup.reply.includes('⚠️ เคยให้ "นาฬิกา"'), dup.reply);
+  assert.equal((await listGifts()).length, 1);
+  assert.equal((await handleTextMessage('ใช่', u2)).type, 'gift_given');
   assert.equal((await listGifts()).length, 2);
 
-  const typed = await handleTextMessage('ให้ของขวัญแฟน กระเป๋าผ้า', u2); // ชื่อคล้าย wishlist → ปิดให้ด้วย
-  assert.equal(typed.type, 'gift_given');
+  const typed = await handleTextMessage('ให้ของขวัญแฟน กระเป๋าผ้า', u2);
+  assert.ok(!typed.reply.includes('⚠️'));
+  await handleTextMessage('อยากได้ กระเป๋า 1200', u1);
+  await handleTextMessage('ใช่', u2); // ยืนยัน (wishlist เพิ่มทีหลังตัวอย่าง ก็ปิดให้ถ้าชื่อคล้ายตอนบันทึก)
   assert.equal((await listWishItems({ ownerLineUserId: 'u1' })).length, 0);
 
   const history = await handleTextMessage('ประวัติของขวัญ', u1);

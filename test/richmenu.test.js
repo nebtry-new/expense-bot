@@ -10,6 +10,7 @@ const { resetData, registerUser, createTrip, addTripPlace, getTripPlaces, listOp
 const { __setInterpreter, __resetRateLimit } = require('../src/services/nl-intent');
 const { clearAllState } = require('../src/handlers/state');
 const { inspectPng } = require('../scripts/richmenu');
+const { buildQuickReplyMessage, toReplyPayload } = require('../src/utils/quick-reply');
 
 const u1 = { lineUserId: 'u1' };
 
@@ -338,6 +339,88 @@ test('menu_cancel: ตอบรับ ไม่ทำอะไรต่อ แ�
   // ไม่กระทบรายการของคนอื่น/เรื่องเงิน: u2 ยังทำงานกับลิสต์ของตัวเองได้
   await handleTextMessage('งาน', { lineUserId: 'u2' });
   assert.equal((await handleTextMessage('เสร็จ 1', { lineUserId: 'u2' })).type, 'todo_done');
+});
+
+test('เดินไล่ทุกชั้นของเมนู (ลึกถึงชั้นที่ 3+): ทุกหน้าที่มีปุ่มต้องมี ✖ ยกเลิก เป็นปุ่มสุดท้าย', async () => {
+  await setup();
+  const trip = await createTrip('หัวหิน');
+  await addTripPlace(trip.id, 'ร้านA');
+  await addTripPlace(trip.id, 'ร้านB');
+  await handleTextMessage('เพิ่มงาน ซื้อนม', u1);
+  await handleTextMessage('เพิ่มวันสำคัญ วันเกิดแฟน 15 ก.ค. 2536', u1);
+
+  const entries = ['money', 'trip', 'ask', 'ev', 'notify', 'todo', 'events', 'events_list', 'restaurant'].map((k) => `action=menu_${k}`);
+  const seen = new Set();
+  let pages = 0;
+  let deepest = 0;
+  const crawl = async (data, depth) => {
+    if (seen.has(data) || depth > 5) return;
+    seen.add(data);
+    const m = await handleMenuPostback(data, u1);
+    if (!m?.quickReply) return; // หน้าสุดท้าย (ข้อความล้วน)
+    pages += 1;
+    deepest = Math.max(deepest, depth);
+    assertValidQuickReply(m);
+    for (const i of m.quickReply.items) {
+      const d = i.action.data;
+      if (i.action.type === 'postback' && d?.startsWith('action=menu_') && d !== CANCEL) await crawl(d, depth + 1);
+    }
+  };
+  for (const e of entries) await crawl(e, 1);
+
+  assert.ok(pages >= 15, `เดินไล่ได้ ${pages} หน้า`);
+  assert.ok(deepest >= 3, `ลึกสุดชั้นที่ ${deepest}`);
+});
+
+test('buildQuickReplyMessage: cancel เป็นตัวเลือก — เติมปุ่ม ✖ ยกเลิก ท้ายสุด ไม่ซ้ำกับปุ่มปฏิเสธที่มีอยู่ และไม่เกิน 13', () => {
+  const ids = (m) => m.quickReply.items.map((i) => i.action.data || i.action.text);
+
+  assert.deepEqual(ids(buildQuickReplyMessage('x', [{ label: 'a', text: 'a' }])), ['a']); // ปิดเป็นค่าเริ่มต้น (ข้อความ push/เตือน)
+  assert.deepEqual(ids(buildQuickReplyMessage('x', [{ label: 'a', text: 'a' }], { cancel: true })), ['a', CANCEL]);
+
+  // มีปุ่มปฏิเสธอยู่แล้ว → ไม่เติมซ้ำ
+  for (const dismiss of [{ label: '✖ ไม่บันทึก', text: 'ยกเลิก' }, { label: 'ยังก่อน', text: 'ยังก่อน' }, { label: 'ไม่ลบ', text: 'ไม่ลบ' }]) {
+    const m = buildQuickReplyMessage('x', [{ label: '✅ ใช่', text: 'ใช่' }, dismiss], { cancel: true });
+    assert.ok(!ids(m).includes(CANCEL), JSON.stringify(dismiss));
+  }
+  // ปุ่ม "ยกเลิกแจ้งเตือน 1" เป็นปุ่มลบรายการ ไม่ใช่ปุ่มถอย → ยังต้องมีปุ่มยกเลิก
+  assert.deepEqual(ids(buildQuickReplyMessage('x', [{ label: '❌ 1. ซื้อนม', text: 'ยกเลิกแจ้งเตือน 1' }], { cancel: true })).at(-1), CANCEL);
+
+  const many = buildQuickReplyMessage('x', Array.from({ length: 20 }, (_, i) => ({ label: `b${i}`, text: `b${i}` })), { cancel: true });
+  assert.equal(many.quickReply.items.length, MAX_QUICK_REPLIES);
+  assert.equal(many.quickReply.items.at(-1).action.data, CANCEL);
+  assert.equal(buildQuickReplyMessage('x', [], { cancel: true }).quickReply, undefined); // ไม่มีปุ่มอื่น ไม่เปิดปุ่มยกเลิกลอยๆ
+});
+
+test('หน้าที่เกิดจากการกดปุ่มแล้วรันคำสั่ง (ชั้นลึก) มี ✖ ยกเลิก ท้ายสุดทุกหน้าที่มีปุ่ม', async () => {
+  await setup();
+  await createTrip('หัวหิน');
+  await handleTextMessage('ค่าข้าว 100', u1);
+  await handleTextMessage('เพิ่มงาน ซื้อนม', u1);
+  await handleTextMessage('เพิ่มวันสำคัญ วันเกิดแฟน 15 ก.ค. 2536', u1);
+  await handleTextMessage('เพิ่มร้าน ราเมน', u1);
+  await handleTextMessage('อยากได้ นาฬิกา 2500', { lineUserId: 'u2' });
+  await handleTextMessage('แจ้งเตือน 25 ธ.ค. 2099 09:00 เช็คกระเป๋า', u1);
+
+  // คำสั่งที่ปุ่มในเมนูส่งมา + คำสั่งในชั้นถัดไป (เสร็จ/ลบ/ไปแล้ว/ให้ของขวัญ ฯลฯ)
+  const commands = [
+    'งาน', 'วันสำคัญ', 'ร้านอาหาร', 'สุ่มร้าน', 'ของขวัญแฟน', 'ของที่อยากได้', 'ประวัติของขวัญ', 'ดูแจ้งเตือน', 'ลบรายการ',
+    'เสร็จ 1', 'ลบวันสำคัญ 1', 'ร้านไปแล้ว 1', 'ให้ของขวัญแฟน 1', 'ลบของที่อยากได้ 1', 'ยกเลิกแจ้งเตือน 1',
+  ];
+  let withButtons = 0;
+  for (const cmd of commands) {
+    if (cmd === 'ให้ของขวัญแฟน 1') await handleTextMessage('ของขวัญแฟน', u1); // ให้ของขวัญเลขจากลิสต์ wishlist ของแฟน
+    const result = await handleTextMessage(cmd, u1);
+    const payload = toReplyPayload(result);
+    if (typeof payload === 'string' || !payload.quickReply) continue;
+    withButtons += 1;
+    const items = payload.quickReply.items;
+    assert.ok(items.length <= MAX_QUICK_REPLIES, cmd);
+    const last = items.at(-1).action;
+    // ปุ่มสุดท้ายต้องเป็นทางถอย: ✖ ยกเลิก (postback) หรือปุ่มปฏิเสธเดิมของหน้านั้น (เช่น ยกเลิก/ยังก่อน)
+    assert.ok(last.data === CANCEL || /^(ยกเลิก|ไม่เอา|ยังก่อน|ไม่ลบ)/.test(last.text || ''), `${cmd} → ${JSON.stringify(last)}`);
+  }
+  assert.ok(withButtons >= 8, `หน้าที่มีปุ่ม ${withButtons}`);
 });
 
 // ---------- คำถามจากเมนูไม่ต้องใช้โมเดล ----------

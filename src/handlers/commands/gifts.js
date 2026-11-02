@@ -1,7 +1,7 @@
 // ของขวัญ: wishlist ของแต่ละคน + ประวัติของขวัญ (กันซื้อซ้ำ) — บอตจะ hint อีกฝ่ายก่อนวันสำคัญ (planner-reminders.js)
 // ไม่แตะเรื่องเงิน: การให้ของขวัญไม่สร้างรายการค่าใช้จ่ายเอง (พิมพ์ ค่าของขวัญ 1200 ส่วนตัว ถ้าต้องการบันทึก)
 const { getUsers, addWishItem, listWishItems, deleteWishItem, markWishGiven, addGift, listGifts } = require('../../services/db');
-const { wishListState, partnerWishState } = require('../state');
+const { wishListState, partnerWishState, giftConfirmState } = require('../state');
 const { localToday } = require('../../utils/planner-dates');
 const { MONTH_LABELS } = require('../../utils/parse-date');
 
@@ -131,14 +131,14 @@ function handlePartnerGifts(lineUserId) {
   });
 }
 
-// "ให้ของขวัญแฟน 2" (เลขจากลิสต์ wishlist แฟน) หรือ "ให้ของขวัญแฟน นาฬิกา 2500 [ยืนยัน]"
+// "ให้ของขวัญแฟน 2" (เลขจากลิสต์ wishlist แฟน) หรือ "ให้ของขวัญแฟน นาฬิกา 2500"
+// ยังไม่บันทึกทันที: แสดงตัวอย่าง (พร้อมเตือนถ้าเคยให้ของคล้ายกัน) แล้วรอ "ใช่" — บันทึกจริงที่ handleConfirmGift
 function handleGiveGift(input, lineUserId) {
   return guarded(async () => {
     const { me, partner } = await couple(lineUserId);
     if (!me || !partner) return NEED_BOTH;
 
-    const confirmed = /\s*ยืนยัน$/.test(input);
-    const body = input.replace(/\s*ยืนยัน$/, '').trim();
+    const body = input.replace(/\s*ยืนยัน$/, '').trim(); // รองรับข้อความเก่าที่ลงท้าย ยืนยัน (ไม่จำเป็นแล้ว)
     let title;
     let price;
     let wish = null;
@@ -156,20 +156,39 @@ function handleGiveGift(input, lineUserId) {
       if (!title) return { type: 'error', reply: 'ระบุของขวัญด้วย เช่น ให้ของขวัญแฟน นาฬิกา 2500' };
     }
 
-    // กันซื้อซ้ำ: เคยให้ของคล้ายกันแล้ว ต้องพิมพ์ ยืนยัน
-    const previous = (await listGifts({ recipientLineUserId: partner.lineUserId })).find((g) => similar(g.title, title));
-    if (previous && !confirmed) {
-      return {
-        type: 'gift_duplicate',
-        reply: `⚠️ เคยให้ "${previous.title}"${fmtPrice(previous.price)} ไปแล้วเมื่อ ${thaiDay(previous.createdAt)}\nแน่ใจว่าจะให้ "${title}" อีก?`,
-        quickReplies: [{ label: 'ให้อีกครั้ง', text: `ให้ของขวัญแฟน ${body} ยืนยัน` }, { label: 'ไม่เอา', text: 'ของขวัญแฟน' }],
-      };
-    }
+    const [previous, open] = await Promise.all([
+      listGifts({ recipientLineUserId: partner.lineUserId }).then((gs) => gs.find((g) => similar(g.title, title))),
+      listWishItems({ ownerLineUserId: partner.lineUserId }),
+    ]);
+    const willClose = open.filter((w) => w.id === wish?.id || similar(w.title, title));
+
+    giftConfirmState.pendingByUser[lineUserId] = { title, price, wishId: wish?.id || null };
+    const lines = ['🎁 ยืนยันบันทึกของขวัญ?', `ให้: ${partner.displayName}`, `ของ: ${title}${fmtPrice(price)}`];
+    if (previous) lines.push(`⚠️ เคยให้ "${previous.title}"${fmtPrice(previous.price)} ไปแล้วเมื่อ ${thaiDay(previous.createdAt)} — ซ้ำหรือเปล่า?`);
+    if (willClose.length) lines.push(`จะปิดใน wishlist: ${willClose.map((w) => w.title).join(', ')}`);
+    lines.push('', 'พิมพ์ ใช่ เพื่อบันทึก หรือ ยกเลิก');
+    return {
+      type: 'gift_confirm',
+      reply: lines.join('\n'),
+      quickReplies: [{ label: '✅ ยืนยันบันทึก', text: 'ใช่' }, { label: '✖ ไม่บันทึก', text: 'ยกเลิก' }],
+    };
+  });
+}
+
+// ผู้ใช้พิมพ์ ใช่ หลังเห็นตัวอย่าง → บันทึกประวัติ + ปิดรายการ wishlist ที่ตรงกัน
+function handleConfirmGift(lineUserId) {
+  return guarded(async () => {
+    const pending = giftConfirmState.pendingByUser[lineUserId];
+    delete giftConfirmState.pendingByUser[lineUserId];
+    if (!pending) return { type: 'noop', reply: 'ไม่มีของขวัญที่รอยืนยัน' };
+
+    const { me, partner } = await couple(lineUserId);
+    if (!me || !partner) return NEED_BOTH;
+    const { title, price, wishId } = pending;
 
     await addGift({ giverLineUserId: lineUserId, recipientLineUserId: partner.lineUserId, title, price });
-    // ปิด wishlist ที่ตรงกัน (รายการที่เลือกเอง + รายการที่ชื่อคล้ายกัน)
     const open = await listWishItems({ ownerLineUserId: partner.lineUserId });
-    for (const w of open) if (w.id === wish?.id || similar(w.title, title)) await markWishGiven(w.id);
+    for (const w of open) if (w.id === wishId || similar(w.title, title)) await markWishGiven(w.id);
 
     return {
       type: 'gift_given',
@@ -190,4 +209,4 @@ function handleGiftHistory(lineUserId) {
   });
 }
 
-module.exports = { handleAddWish, handleMyWishlist, handleDeleteWish, handlePartnerGifts, handleGiveGift, handleGiftHistory, similar, parseTitlePrice };
+module.exports = { handleAddWish, handleMyWishlist, handleDeleteWish, handlePartnerGifts, handleGiveGift, handleConfirmGift, handleGiftHistory, similar, parseTitlePrice };

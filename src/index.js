@@ -13,7 +13,7 @@ const { parseDatetimePickerValue, toLocalDisplay } = require('./utils/parse-date
 const { runPaymentReminders } = require('./services/payment-reminders');
 const { runBillingReminders } = require('./services/billing-reminders');
 const { runPlannerReminders } = require('./services/planner-reminders');
-const { buildQuickReplyMessage } = require('./utils/quick-reply');
+const { toReplyPayload } = require('./utils/quick-reply');
 
 dotenv.config();
 
@@ -150,8 +150,7 @@ app.post('/webhook', async (req, res) => {
         await sendPushMessage(lineUserId, result.reply);
       } else {
         const result = await handleTextMessage(messageText, userContext);
-        const replyPayload = result.replyMessage
-          || (result.quickReplies?.length ? buildQuickReplyMessage(result.reply, result.quickReplies) : result.reply);
+        const replyPayload = toReplyPayload(result);
         replies.push(typeof replyPayload === 'string' ? { type: 'text', text: replyPayload } : replyPayload);
         await sendReplyMessage(event, replyPayload);
 
