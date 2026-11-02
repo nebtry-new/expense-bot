@@ -86,11 +86,17 @@ test('ลบ N without a list, or out of range, is rejected', async () => {
   assert.equal((await handleTextMessage('ลบ 5', u1)).type, 'error');
 });
 
-test('ลบรายการ does not list partner expenses', async () => {
+test('ลบรายการ lists partner expenses too (labelled) and can delete them', async () => {
   await setup();
   await handleTextMessage('ค่าอาหาร 100', u2);
   const list = await handleTextMessage('ลบรายการ', u1);
-  assert.equal(list.type, 'noop');
+  assert.equal(list.type, 'expense_delete_list');
+  assert.ok(list.reply.includes('ค่าอาหาร') && list.reply.includes('B จ่าย'), list.reply);
+
+  const prompt = await handleTextMessage('ลบ 1', u1);
+  assert.ok(prompt.reply.includes('B จ่าย'));
+  await handleTextMessage('ใช่', u1);
+  assert.equal((await getExpenses()).length, 0);
 });
 
 // ---------- trip billing scope ----------

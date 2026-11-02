@@ -246,7 +246,7 @@ async function handleNaturalLanguageExpense(text, userContext) {
 
 const DELETE_LIST_LIMIT = 15;
 
-// แสดงรายการที่ยังไม่เคลียร์ของผู้ใช้ (รวมรายการในทริป) ให้เลือกลบด้วยเลข
+// แสดงรายการที่ยังไม่เคลียร์ของทั้งสองคน (รวมรายการในทริป) โดยกำกับชื่อคนจ่ายถ้าไม่ใช่ของตัวเอง ให้เลือกลบด้วยเลข
 // keyword (optional) กรองจากชื่อรายการหรือชื่อทริป
 async function handleListDeletableExpenses(keyword, userContext) {
   const lineUserId = userContext.lineUserId || 'unknown';
@@ -258,12 +258,13 @@ async function handleListDeletableExpenses(keyword, userContext) {
 
   const [expenses, trips] = await Promise.all([getExpenses(), getTrips()]);
   const tripsMap = Object.fromEntries(trips.map((t) => [t.id, t.name]));
+  const usersMap = Object.fromEntries(allUsers.map((u) => [String(u.id), u.displayName]));
   const kw = (keyword || '').replace(/^#/, '').trim().toLowerCase();
 
   // getExpenses() เรียงเก่า→ใหม่; รายการที่ createdAt ซ้ำกัน (เช่นพิมพ์หลายบรรทัดในข้อความเดียว) ใช้ลำดับเดิมตัดสิน
   const indexOf = new Map(expenses.map((e, i) => [e.id, i]));
   const candidates = expenses
-    .filter((e) => String(e.paidByUserId) === String(currentUser.id) && !e.isCleared)
+    .filter((e) => !e.isCleared)
     .filter((e) => !kw
       || String(e.description || '').toLowerCase().includes(kw)
       || String(tripsMap[e.tripId] || '').toLowerCase().includes(kw))
@@ -278,11 +279,13 @@ async function handleListDeletableExpenses(keyword, userContext) {
     id: e.id,
     description: e.description,
     amount: Number(e.amount),
+    paidByName: String(e.paidByUserId) === String(currentUser.id) ? null : usersMap[String(e.paidByUserId)] || null,
   }));
 
   const lines = candidates.map((e, i) => {
     const trip = e.tripId ? ` [${tripsMap[e.tripId] || 'ทริป'}]` : '';
-    return `${i + 1}. ${e.description}${trip} ${Number(e.amount).toLocaleString()} บาท`;
+    const payer = String(e.paidByUserId) === String(currentUser.id) ? '' : ` (${usersMap[String(e.paidByUserId)] || 'แฟน'} จ่าย)`;
+    return `${i + 1}. ${e.description}${trip} ${Number(e.amount).toLocaleString()} บาท${payer}`;
   });
 
   return {
@@ -310,7 +313,7 @@ function handlePickDeleteExpense(index, userContext) {
 
   return {
     type: 'expense_delete_prompt',
-    reply: `รายการ: ${target.description} ${Number(target.amount).toLocaleString()} บาท\nต้องการลบใช่หรือไม่? พิมพ์ ใช่ เพื่อยืนยัน`,
+    reply: `รายการ: ${target.description} ${Number(target.amount).toLocaleString()} บาท${target.paidByName ? ` (${target.paidByName} จ่าย)` : ''}\nต้องการลบใช่หรือไม่? พิมพ์ ใช่ เพื่อยืนยัน`,
   };
 }
 
