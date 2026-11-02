@@ -1,7 +1,7 @@
 const { registerUser, getUsers, resetData, terminateUserByName, restoreUserByName, renameUserByLineId, resetState } = require('../services/db');
 const { handleSummary, handleMonthlySummary } = require('./commands/summary');
 const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('./commands/settlement');
-const { handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense } = require('./commands/expense');
+const { handleNaturalLanguageExpense, handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
 const { handleCreateTrip, handleListTrips, handleTripSummary, handleSetTripBillable, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
 const { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification } = require('./commands/notifications');
@@ -18,6 +18,7 @@ const HELP_TEXT = [
   '• ระบุจำนวนเอง: ค่าโรงแรม 1200 ฉัน 400 แฟน 800',
   '• หารตามจำนวนคน: ค่าทัวร์ 3000 หาร 3 คน',
   '• หลายรายการ: พิมพ์ขึ้นบรรทัดใหม่ทีละรายการ',
+  '• พิมพ์เป็นประโยคธรรมดาก็ได้: เลี้ยงข้าวแฟน 450 / แฟนออกค่าที่พัก 1200',
   '• ส่งรูป slip: บอทอ่านยอดให้ แล้วตอบ ใช่ / ไม่หาร / หาร 3 / ยกเลิก',
   '',
   '━━ 📊 สรุปยอด & เคลียร์เงิน ━━',
@@ -78,6 +79,9 @@ const CANCEL_RE = /^(ยกเลิก|cancel|ไม่เอา)$/i;
 const MAPS_URL_RE = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/;
 // Commands that never belong to a free-text flow (datetime picker reply)
 const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
+
+// ประโยคที่บอกว่าใครจ่าย/เลี้ยงใคร parser เดิมอ่านไม่ออก (มันเห็นแค่ "ชื่อ + ตัวเลข") → ให้ Claude ตีความก่อน
+const NL_CUE_RE = /(ออกให้|เลี้ยง|จ่ายแทน|แฟนออก|แฟนจ่าย|ออกค่า|จ่ายให้แฟน)/;
 
 function isSlipReply(text) {
   return YES_RE.test(text)
@@ -340,7 +344,17 @@ async function handleTextMessage(text, userContext = {}) {
   }
 
   const inputLines = normalized.split('\n').map((l) => l.trim()).filter(Boolean);
-  return handleExpenseLines(inputLines, userContext);
+  if (inputLines.length === 1 && NL_CUE_RE.test(normalized)) {
+    const cued = await handleNaturalLanguageExpense(normalized, userContext);
+    if (cued) return cued;
+  }
+
+  const result = await handleExpenseLines(inputLines, userContext);
+  if (result.type !== 'noop') return result;
+
+  // parser เดิมหาจำนวนเงินไม่เจอ → ลองให้ Claude ตีความข้อความภาษาธรรมชาติ
+  const nlResult = await handleNaturalLanguageExpense(normalized, userContext);
+  return nlResult || result;
 }
 
 module.exports = { handleTextMessage };

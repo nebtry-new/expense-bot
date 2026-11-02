@@ -1,5 +1,6 @@
 const { parseExpenseText, formatSplitMode } = require('../../utils/parser');
 const { addExpense, getUsers, getExpenses, getTrips, findLastExpense, findTripByName } = require('../../services/db');
+const { interpretExpenseMessage } = require('../../services/nl-intent');
 const { deleteConfirmState, deleteListState } = require('../state');
 
 async function handleExpenseLines(inputLines, userContext) {
@@ -152,6 +153,88 @@ async function handleDeleteLastExpense(userContext) {
   };
 }
 
+const NL_FAIL_REPLIES = {
+  amount_not_in_text: 'อ่านจำนวนเงินจากข้อความไม่ชัดเจน กรุณาพิมพ์ยอดเป็นตัวเลข เช่น ค่าข้าว 450',
+  custom_sum_mismatch: 'ยอดที่แบ่งไม่ตรงกับยอดรวม กรุณาระบุใหม่ เช่น ค่าข้าว 450 ฉัน 200 แฟน 250',
+};
+
+// ข้อความภาษาธรรมชาติที่ parser เดิมอ่านไม่ได้ → ให้ Claude ตีความ → ตรวจ → บันทึก
+// คืน null ถ้าตีความไม่ได้ (ให้ผู้เรียกตอบ noop เดิม)
+async function handleNaturalLanguageExpense(text, userContext) {
+  const lineUserId = userContext.lineUserId || 'unknown';
+  const allUsers = await getUsers();
+  const sender = allUsers.find((u) => u.lineUserId === lineUserId) || null;
+  const partner = allUsers.find((u) => u.lineUserId !== lineUserId) || null;
+  if (!sender) return null;
+
+  const trips = await getTrips();
+  const interpreted = await interpretExpenseMessage(text, {
+    senderName: sender.displayName,
+    partnerName: partner?.displayName || null,
+    tripNames: trips.map((t) => t.name),
+  }, lineUserId);
+
+  if (!interpreted.ok) {
+    const reply = NL_FAIL_REPLIES[interpreted.reason];
+    return reply ? { type: 'error', reply } : null;
+  }
+
+  // Validate everything first — write only if all items pass
+  const prepared = [];
+  for (const item of interpreted.expenses) {
+    if ((item.payer === 'partner' || item.split === 'custom') && !partner) {
+      return { type: 'error', reply: 'ยังไม่มีผู้ใช้คนที่ 2 ในระบบ จึงบันทึกรายการแบบนี้ไม่ได้' };
+    }
+
+    let tripId = null;
+    let { split, numPeople } = item;
+    if (item.tripName) {
+      const trip = trips.find((t) => (t.name || '').toLowerCase() === item.tripName.toLowerCase());
+      if (!trip) {
+        return { type: 'error', reply: `ไม่พบทริป "${item.tripName}" สร้างก่อนด้วย: สร้างทริป ${item.tripName}` };
+      }
+      tripId = trip.id;
+      if (split === 'half' && trip.default_split_mode && trip.default_split_mode !== 'half') {
+        split = trip.default_split_mode;
+        numPeople = trip.default_num_people || null;
+      }
+    }
+
+    const payerUser = item.payer === 'partner' ? partner : sender;
+    const customAmounts = split === 'custom'
+      ? { [String(sender.id)]: item.myShare, [String(partner.id)]: item.partnerShare }
+      : null;
+
+    prepared.push({ item, split, numPeople, tripId, payerUser, customAmounts });
+  }
+
+  const lines = [];
+  for (const { item, split, numPeople, tripId, payerUser, customAmounts } of prepared) {
+    await addExpense({
+      paidByUserId: payerUser.id,
+      paidByDisplayName: payerUser.displayName,
+      description: item.description,
+      amount: item.amount,
+      splitMode: split,
+      numPeople,
+      customAmounts,
+      tripId,
+    });
+    const payerNote = payerUser.id === sender.id ? '' : ` — ${payerUser.displayName} จ่าย`;
+    lines.push(`• ${item.description} ${item.amount.toLocaleString()} บาท (${formatSplitMode(split, numPeople)})${payerNote}`);
+  }
+
+  return {
+    type: 'expense_nl',
+    reply: [
+      `บันทึกแล้ว (ตีความจากข้อความ ${prepared.length} รายการ):`,
+      ...lines,
+      '',
+      'ถ้าไม่ถูก พิมพ์ ลบรายการ เพื่อเลือกลบ',
+    ].join('\n'),
+  };
+}
+
 const DELETE_LIST_LIMIT = 15;
 
 // แสดงรายการที่ยังไม่เคลียร์ของผู้ใช้ (รวมรายการในทริป) ให้เลือกลบด้วยเลข
@@ -219,4 +302,4 @@ function handlePickDeleteExpense(index, userContext) {
   };
 }
 
-module.exports = { handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense };
+module.exports = { handleNaturalLanguageExpense, handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense };
