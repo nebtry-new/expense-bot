@@ -161,8 +161,8 @@ app.post('/webhook', async (req, res) => {
           const n = result.notification;
           const pushLines = [];
           if (n.tripName) pushLines.push(`📋 สรุปทริป "${n.tripName}"`);
-          pushLines.push(`รวม: ${n.amount.toFixed(2)} บาท`);
-          if (n.expenseLines?.length) pushLines.push('', ...n.expenseLines);
+          pushLines.push(`ยอดที่ต้องจ่าย: ${n.amount.toFixed(2)} บาท`);
+          if (n.expenseLines?.length) pushLines.push('', `จากรายการต่อไปนี้ (ยอดเต็มของแต่ละรายการ ไม่ใช่ส่วนของคุณ):`, ...n.expenseLines);
           pushLines.push('', `${n.debtorName} ต้องจ่ายคืน ${n.creditorName} ${n.amount.toFixed(2)} บาท`);
           pushLines.push('พิมพ์ จ่ายแล้ว เมื่อโอนแล้ว');
           await sendPushMessage(n.debtorLineUserId, pushLines.join('\n'));

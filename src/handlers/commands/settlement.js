@@ -1,6 +1,6 @@
 const { getUsers, getExpenses, getTrips, clearSettlement, deleteExpenseById } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
-const { selectBillableExpenses } = require('../../utils/billing');
+const { selectScopeExpenses } = require('../../utils/billing');
 const { settlementState, paymentConfirmState, deleteConfirmState, slipConfirmState } = require('../state');
 const { handleSlipConfirm } = require('./slip');
 
@@ -8,6 +8,13 @@ const { handleSlipConfirm } = require('./slip');
 // scope: { tripId } — tripId = null คือรอบทั่วไป (รายการทั่วไป + ทริปที่ปิดแล้ว), มีค่า = เฉพาะทริปนั้น
 const DEFAULT_SCOPE = { tripId: null };
 const agreedAmountByDebtor = {};
+
+// สรุปใหม่ทุกครั้ง = ข้อเสนอเรียกเก็บเก่าที่ค้างอยู่ (ของทั้งสองคน) หมดอายุ
+// ไม่งั้นคนที่เคยเป็นเจ้าหนี้จะกด "เรียกเก็บเงิน" แล้วได้ยอด/ทิศทางจากสรุปรอบเก่า
+function resetBillingOffers() {
+  for (const key of Object.keys(settlementState.pendingByUser)) delete settlementState.pendingByUser[key];
+  for (const key of Object.keys(agreedAmountByDebtor)) delete agreedAmountByDebtor[key];
+}
 
 function buildSettlementNotification(summary, users) {
   if (!Array.isArray(users) || users.length !== 2) return null;
@@ -44,7 +51,8 @@ async function handlePaymentSent(userContext) {
   const agreed = agreedAmountByDebtor[currentLineUserId];
   const scope = agreed?.scope || DEFAULT_SCOPE;
   const [allExpenses, trips] = await Promise.all([getExpenses(), getTrips()]);
-  const summary = calculateBalances(selectBillableExpenses(allExpenses, trips, scope), users);
+  const scoped = selectScopeExpenses(allExpenses, trips, scope);
+  const summary = calculateBalances(scoped, users);
   const currentUser = users.find((u) => u.lineUserId === currentLineUserId);
 
   if (!currentUser) {
@@ -70,7 +78,8 @@ async function handlePaymentSent(userContext) {
     creditorName: creditor.displayName,
     creditorLineUserId: creditor.lineUserId,
     amount,
-    scope,
+    // snapshot รายการที่นับในยอดนี้ — ตอนยืนยันรับเงินจะเคลียร์เฉพาะชุดนี้ ไม่แตะรายการที่เพิ่มเข้ามาทีหลัง
+    scope: { ...scope, expenseIds: scope.expenseIds || scoped.filter((e) => !e.isCleared).map((e) => e.id) },
   };
 
   if (creditor.lineUserId) {
@@ -95,7 +104,7 @@ async function handlePaymentReceived(userContext) {
   delete paymentConfirmState.pendingByUser[currentLineUserId];
 
   const [allExpenses, trips] = await Promise.all([getExpenses(), getTrips()]);
-  const toClear = selectBillableExpenses(allExpenses, trips, pending.scope || DEFAULT_SCOPE)
+  const toClear = selectScopeExpenses(allExpenses, trips, pending.scope || DEFAULT_SCOPE)
     .filter((e) => !e.isCleared);
   await clearSettlement(toClear.map((e) => e.id));
 
@@ -141,6 +150,22 @@ async function handleConfirmYes(userContext) {
 
   delete settlementState.pendingByUser[currentLineUserId];
 
+  // ตรวจซ้ำก่อนส่ง: ยอด/ทิศทางตอนนี้ต้องตรงกับที่สรุปไว้ (เช่น มีการลบ/แก้รายการหลังสรุป)
+  const [users, allExpenses, trips] = await Promise.all([getUsers(), getExpenses(), getTrips()]);
+  const fresh = buildSettlementNotification(
+    calculateBalances(selectScopeExpenses(allExpenses, trips, pending.scope || DEFAULT_SCOPE), users),
+    users,
+  );
+  if (!fresh || fresh.debtorLineUserId !== pending.debtorLineUserId || Math.abs(fresh.amount - pending.amount) > 0.01) {
+    const now = fresh
+      ? `ตอนนี้ ${fresh.debtorName} ต้องจ่ายให้ ${fresh.creditorName} ${fresh.amount.toFixed(2)} บาท`
+      : 'ตอนนี้ไม่มียอดค้างแล้ว';
+    return {
+      type: 'error',
+      reply: `ยอดเปลี่ยนไปจากที่สรุปไว้ (${pending.debtorName} จ่าย ${pending.amount.toFixed(2)} บาท) — ${now}\nไม่ได้ส่งแจ้งเตือน กรุณาพิมพ์ สรุป ใหม่อีกครั้ง`,
+    };
+  }
+
   if (pending.debtorLineUserId) {
     agreedAmountByDebtor[pending.debtorLineUserId] = { amount: pending.amount, scope: pending.scope || DEFAULT_SCOPE };
   }
@@ -152,4 +177,4 @@ async function handleConfirmYes(userContext) {
   };
 }
 
-module.exports = { buildSettlementNotification, handlePaymentSent, handlePaymentReceived, handleConfirmYes };
+module.exports = { resetBillingOffers, buildSettlementNotification, handlePaymentSent, handlePaymentReceived, handleConfirmYes };

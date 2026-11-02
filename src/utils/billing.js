@@ -14,6 +14,16 @@ function selectBillableExpenses(expenses = [], trips = [], { tripId = null } = {
   return expenses.filter((e) => !e.tripId || billableTripIds.has(e.tripId));
 }
 
+// รายการที่เข้ารอบเรียกเก็บ: ถ้า scope มี expenseIds (snapshot ตอนสรุป) ใช้ชุดนั้นเป๊ะ
+// เพื่อให้ยอดที่เรียกเก็บ = ยอดที่เคลียร์ แม้จะมีรายการใหม่เพิ่มเข้ามาหลังสรุป
+function selectScopeExpenses(expenses = [], trips = [], scope = {}) {
+  if (Array.isArray(scope.expenseIds)) {
+    const ids = new Set(scope.expenseIds.map(String));
+    return expenses.filter((e) => ids.has(String(e.id)));
+  }
+  return selectBillableExpenses(expenses, trips, scope);
+}
+
 // ทริปที่ยังไม่พร้อมเรียกเก็บ + ยอดรวมรายการที่ยังไม่เคลียร์ (ไม่รวมทริปที่ไม่มีรายการค้าง)
 function summarizePendingTrips(expenses = [], trips = []) {
   return trips
@@ -25,4 +35,4 @@ function summarizePendingTrips(expenses = [], trips = []) {
     .filter((t) => t.count > 0);
 }
 
-module.exports = { isTripBillable, selectBillableExpenses, summarizePendingTrips };
+module.exports = { isTripBillable, selectBillableExpenses, selectScopeExpenses, summarizePendingTrips };

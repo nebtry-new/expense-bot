@@ -2,10 +2,11 @@ const { getUsers, getExpenses, getTrips } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
 const { selectBillableExpenses, summarizePendingTrips } = require('../../utils/billing');
 const { formatExpenseLines } = require('../../utils/format');
-const { buildSettlementNotification } = require('./settlement');
+const { buildSettlementNotification, resetBillingOffers } = require('./settlement');
 const { settlementState } = require('../state');
 
 async function handleSummary() {
+  resetBillingOffers();
   const users = await getUsers();
   const allExpenses = await getExpenses();
   const trips = await getTrips();
@@ -51,7 +52,7 @@ async function handleSummary() {
     }
     if (notification) {
       notification.expenseLines = expenseLines;
-      notification.scope = { tripId: null };
+      notification.scope = { tripId: null, expenseIds: activeExpenses.map((e) => e.id) };
     }
     if (!notification && summaryA !== 0 && summaryB !== 0) {
       reply = `สรุปยอด: ${userA.displayName} ${summaryA >= 0 ? 'ได้รับ' : 'ต้องจ่าย'} ${formatAmount(summaryA)} บาท, ${userB.displayName} ${summaryB >= 0 ? 'ได้รับ' : 'ต้องจ่าย'} ${formatAmount(summaryB)} บาท`;
