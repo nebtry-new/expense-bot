@@ -107,3 +107,28 @@ test('messages the old parser understands never reach the interpreter', async ()
   assert.equal(r.type, 'expense');
   assert.equal(calls.length, 0);
 });
+
+test('"ยืม" sentences are routed to the interpreter even though the old parser finds an amount', async () => {
+  await setup();
+  const calls = stub({ intent: 'add_expense', confidence: 0.9, expenses: [
+    { description: 'ยืมเงิน', amount: 500, payer: 'partner', split: 'custom', my_share: 500, partner_share: 0 },
+  ] });
+
+  const r = await handleTextMessage('ยืมเงิน 500', u1);
+  assert.equal(calls.length, 1);
+  assert.equal(r.type, 'expense_nl');
+  assert.ok(r.reply.includes('A ต้องคืน B เต็มจำนวน 500'), r.reply);
+
+  const [saved] = await getExpenses();
+  assert.equal(saved.paidByDisplayName, 'B');
+  assert.equal(saved.splitMode, 'custom');
+});
+
+test('partner borrowing from me: "แฟนยืม 300" → partner owes me in full', async () => {
+  await setup();
+  stub({ intent: 'add_expense', confidence: 0.9, expenses: [
+    { description: 'แฟนยืมเงิน', amount: 300, payer: 'me', split: 'custom', my_share: 0, partner_share: 300 },
+  ] });
+  const r = await handleTextMessage('แฟนยืม 300', u1);
+  assert.ok(r.reply.includes('B ต้องคืน A เต็มจำนวน 300'), r.reply);
+});

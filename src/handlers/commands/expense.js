@@ -222,6 +222,15 @@ async function handleNaturalLanguageExpense(text, userContext) {
     });
     const payerNote = payerUser.id === sender.id ? '' : ` — ${payerUser.displayName} จ่าย`;
     lines.push(`• ${item.description} ${item.amount.toLocaleString()} บาท (${formatSplitMode(split, numPeople)})${payerNote}`);
+
+    // custom ที่อีกฝ่ายรับเต็มจำนวน → บอกชัดๆ ว่าใครต้องคืนใคร จะได้เห็นถ้าตีความทิศทางผิด
+    if (split === 'custom') {
+      const other = payerUser.id === sender.id ? partner : sender;
+      const otherShare = customAmounts[String(other.id)];
+      if (Math.abs(otherShare - item.amount) < 0.01) {
+        lines.push(`  → ${other.displayName} ต้องคืน ${payerUser.displayName} เต็มจำนวน ${item.amount.toLocaleString()} บาท`);
+      }
+    }
   }
 
   return {
