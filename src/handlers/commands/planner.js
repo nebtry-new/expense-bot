@@ -44,7 +44,7 @@ const kindOf = (title) => (/วันเกิด|birthday/i.test(title) ? 'birt
 
 function handleAddEvent(input, lineUserId) {
   return guarded(async () => {
-    const usage = 'เพิ่มวันสำคัญ [ชื่อ] [วัน เดือน] เช่น เพิ่มวันสำคัญ วันเกิดแฟน 14 มี.ค. (ใส่ปีเกิด/ปีที่เริ่มด้วยจะบอกอายุ/ครบกี่ปี: 14 มี.ค. 2540)';
+    const usage = 'เพิ่มวันสำคัญ [ชื่อ] [วัน เดือน] เช่น เพิ่มวันสำคัญ วันเกิดแฟน 15 ก.ค. 2536 (ใส่ปีเกิด/ปีที่เริ่มจะบอกอายุ/ครบกี่ปี ไม่ใส่ปีก็ได้: 15 ก.ค.)';
     const md = extractMonthDay(input);
     if (md?.error) return { type: 'error', reply: 'วันที่ไม่ถูกต้อง (เช่น 31 ก.พ.) ลองตรวจอีกครั้ง' };
     if (!md) return { type: 'error', reply: `ไม่พบวันที่ — ${usage}` };
@@ -74,7 +74,7 @@ function handleListEvents(lineUserId) {
     const events = await listSpecialEvents();
     if (!events.length) {
       delete eventListState.pendingByUser[lineUserId];
-      return { type: 'events', reply: 'ยังไม่มีวันสำคัญ\nเพิ่มได้ด้วย: เพิ่มวันสำคัญ วันเกิดแฟน 14 มี.ค.' };
+      return { type: 'events', reply: 'ยังไม่มีวันสำคัญ\nเพิ่มได้ด้วย: เพิ่มวันสำคัญ วันเกิดแฟน 15 ก.ค. 2536' };
     }
     const today = localToday();
     const rows = events
