@@ -1,7 +1,7 @@
-const { getUsers, getExpenses, getTrips, clearSettlement, deleteExpenseById } = require('../../services/db');
+const { getUsers, getExpenses, getTrips, clearSettlement, deleteExpenseById, savePaymentConfirmation, getPaymentConfirmation, completePaymentConfirmation } = require('../../services/db');
 const { calculateBalances } = require('../../utils/balance');
 const { selectScopeExpenses } = require('../../utils/billing');
-const { settlementState, paymentConfirmState, deleteConfirmState, slipConfirmState } = require('../state');
+const { settlementState, deleteConfirmState, slipConfirmState } = require('../state');
 const { handleSlipConfirm } = require('./slip');
 
 // เก็บยอดและขอบเขต (scope) ที่ตกลงกันไว้ (creditor กด ใช่) เพื่อให้ debtor ใช้ตอนกด จ่ายแล้ว
@@ -84,8 +84,14 @@ async function handlePaymentSent(userContext) {
     scope: { ...scope, expenseIds: scope.expenseIds || scoped.filter((e) => !e.isCleared).map((e) => e.id) },
   };
 
+  // เก็บใน DB — รอดการรีสตาร์ท และตัวรันแจ้งเตือนใช้เตือนเจ้าหนี้ทุกวัน 09:00 จนกว่าจะกด รับแล้ว (services/payment-reminders.js)
   if (creditor.lineUserId) {
-    paymentConfirmState.pendingByUser[creditor.lineUserId] = pending;
+    try {
+      await savePaymentConfirmation(pending);
+    } catch (error) {
+      console.error('PAYMENT_CONFIRMATION_SAVE_FAILED', error.message);
+      return { type: 'error', reply: 'บันทึกการแจ้งจ่ายเงินไม่สำเร็จ ยังไม่ได้แจ้ง' + ` ${creditor.displayName} กรุณาลองใหม่ (ถ้าเป็นซ้ำ ตรวจว่ารัน migration_011 ใน Supabase แล้ว)` };
+    }
   }
 
   return {
@@ -97,13 +103,11 @@ async function handlePaymentSent(userContext) {
 
 async function handlePaymentReceived(userContext) {
   const currentLineUserId = userContext.lineUserId || 'unknown';
-  const pending = paymentConfirmState.pendingByUser[currentLineUserId];
-
-  if (!pending) {
-    return { type: 'payment_confirm_missing', reply: 'ยังไม่มีการแจ้งจ่ายเงินที่รอยืนยัน' };
-  }
-
-  delete paymentConfirmState.pendingByUser[currentLineUserId];
+  const missing = { type: 'payment_confirm_missing', reply: 'ยังไม่มีการแจ้งจ่ายเงินที่รอยืนยัน' };
+  const pending = await getPaymentConfirmation(currentLineUserId);
+  if (!pending) return missing;
+  // ยืนยันแบบ atomic — กดซ้ำ/พร้อมกันจะเคลียร์ครั้งเดียว
+  if (!(await completePaymentConfirmation(pending.id))) return missing;
 
   const [allExpenses, trips] = await Promise.all([getExpenses(), getTrips()]);
   const toClear = selectScopeExpenses(allExpenses, trips, pending.scope || DEFAULT_SCOPE)

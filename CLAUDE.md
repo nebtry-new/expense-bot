@@ -39,7 +39,7 @@ expense-bot/
 │   ├── richmenu-guide.js     ← สร้างภาพ guide จาก definitions (ต้องมี rsvg-convert)
 │   ├── golden-runner.js      ← รันประโยคตัวอย่างผ่าน handleTextMessage แล้วตรวจผล
 │   └── eval-nl.js            ← `npm run eval:nl` ประเมินโมเดลจริง (ใช้เครดิต API)
-├── supabase/                 ← schema.sql + migration_001…009
+├── supabase/                 ← schema.sql + migration_001…011
 ├── test/
 │   ├── golden/nl-sentences.json  ← ประโยคตัวอย่าง + ผลที่ควรได้ (เพิ่มที่นี่ก่อนแก้บั๊ก NL)
 │   └── *.test.js
@@ -147,6 +147,14 @@ nl_message_log (
   has_date boolean, latency_ms int, created_at timestamptz
 )
 
+-- รอเจ้าหนี้ยืนยันรับเงิน (migration_011) — confirmed_at NULL = ยังรอ
+payment_confirmations (
+  id uuid PK, creditor_line_user_id text, debtor_line_user_id text,
+  creditor_name text, debtor_name text, amount numeric(10,2),
+  scope jsonb,              -- { tripId, expenseIds } ขอบเขตที่จะเคลียร์
+  requested_at timestamptz, last_reminded_at timestamptz, confirmed_at timestamptz
+)
+
 -- ทริปท่องเที่ยว
 trips (
   id                  uuid PK,
@@ -202,6 +210,7 @@ trips (
 - `supabase/migration_002_add_trip_id_to_expenses.sql`
 - `supabase/migration_003_trip_default_split.sql`
 - `supabase/migration_004_trip_places_car_profile.sql` ← Sprint 2
+- `supabase/migration_011_payment_confirmations.sql` ← สถานะรอยืนยันรับเงิน (จ่ายแล้ว → รับแล้ว) + เตือนทุกวัน 09:00 (**ต้องรันก่อน deploy** ไม่งั้น `จ่ายแล้ว` จะแจ้ง error)
 - `supabase/migration_010_nl_message_log.sql` ← log ทุกข้อความที่ผ่าน NL layer (route/outcome/ผลตีความ/expense_ids) ไว้วิเคราะห์
 - `supabase/migration_009_unrecognized_messages.sql` ← log ข้อความที่ตีความไม่ได้ (คำสั่ง `ข้อความที่ไม่เข้าใจ`)
 - `supabase/migration_008_trip_billable.sql` ← trips.is_billable (ทริปใหม่ไม่รวมใน สรุป จนกว่าจะ ปิดทริป)
@@ -240,6 +249,7 @@ trips (
 
 - **ทำแล้ว: แจ้งเตือนแบบตั้งเอง** — `แจ้งเตือนใหม่` (เลือกจากปฏิทิน) / `แจ้งเตือน 25 ธ.ค. 09:00 ข้อความ` / `ดูแจ้งเตือน` / `ยกเลิกแจ้งเตือน [เลข]` (`notifications.js`, ตาราง `notifications`)
   - **ตัวรันแจ้งเตือน:** `startNotificationScheduler()` ใน `src/index.js` รันทุก 60 วิในตัวเซิร์ฟเวอร์ (ปิดด้วย `NOTIFICATION_POLL_MS=0`; endpoint `POST /internal/run-notifications` ยังใช้ได้ ไม่ส่งซ้ำเพราะจอง atomic) — ส่งไม่สำเร็จจะไม่ถูก mark ว่าส่งแล้ว ลองใหม่สูงสุด 5 ครั้งแล้วยอมแพ้ (log `NOTIFICATION_GAVE_UP`); `ดูแจ้งเตือน`/`ยกเลิกแจ้งเตือน` เห็นเฉพาะของตัวเอง + ของทั้งคู่
+  - **เตือนยืนยันรับเงิน:** ลูกหนี้พิมพ์ `จ่ายแล้ว` แต่เจ้าหนี้ยังไม่กด `รับแล้ว` → ตัวรันเดียวกันนี้ push เตือนเจ้าหนี้ **09:00 (เวลาไทย) ของวันถัดไป แล้วซ้ำทุกวัน 09:00** พร้อมปุ่ม รับแล้ว จนกว่าจะยืนยัน (`src/services/payment-reminders.js`, ปรับชั่วโมงด้วย `PAYMENT_REMINDER_HOUR`) — สถานะอยู่ในตาราง `payment_confirmations` (migration_011) จึงรอดการรีสตาร์ท; `รับแล้ว` ยืนยันแบบ atomic กดซ้ำไม่เคลียร์ซ้ำ
   - ยังเหลือ: ไม่มีงานลบแจ้งเตือนเก่า, ถ้าเซิร์ฟเวอร์ดับนานแจ้งเตือนที่เลยเวลาจะถูกส่งทีเดียวตอนกลับมา
 - **แจ้งเตือนวันพิเศษ** — บันทึก event (วันเกิด, ครบรอบ ฯลฯ) + reminder ล่วงหน้า + Claude generate ข้อความน่ารักวันนั้น
 - **To-Do ร่วมกัน** — shared task list + due date + push reminder

@@ -1,5 +1,4 @@
 const settlementState = { pendingByUser: {} };
-const paymentConfirmState = { pendingByUser: {} };
 const deleteConfirmState = { pendingByUser: {} };
 const slipConfirmState = { pendingByUser: {} };
 const deleteListState = { pendingByUser: {} }; // { [userId]: [{ id, description, amount }] }
@@ -10,7 +9,6 @@ const datetimePickerState = { pendingByUser: {} }; // { scheduledAt: Date }
 
 function clearAllState() {
   settlementState.pendingByUser = {};
-  paymentConfirmState.pendingByUser = {};
   deleteConfirmState.pendingByUser = {};
   slipConfirmState.pendingByUser = {};
   deleteListState.pendingByUser = {};
@@ -20,4 +18,4 @@ function clearAllState() {
   datetimePickerState.pendingByUser = {};
 }
 
-module.exports = { settlementState, paymentConfirmState, deleteConfirmState, deleteListState, nlCommandState, notifListState, slipConfirmState, evRouteState, datetimePickerState, clearAllState };
+module.exports = { settlementState, deleteConfirmState, deleteListState, nlCommandState, notifListState, slipConfirmState, evRouteState, datetimePickerState, clearAllState };

@@ -10,6 +10,7 @@ const { handleLocationForEv } = require('./handlers/commands/ev');
 const { handleMenuPostback } = require('./handlers/commands/menu');
 const { evRouteState, datetimePickerState } = require('./handlers/state');
 const { parseDatetimePickerValue, toLocalDisplay } = require('./utils/parse-date');
+const { runPaymentReminders } = require('./services/payment-reminders');
 const { buildQuickReplyMessage } = require('./utils/quick-reply');
 
 dotenv.config();
@@ -55,10 +56,11 @@ async function sendReplyMessage(event, textOrMessage) {
 }
 
 // คืน true เมื่อส่งสำเร็จ (ผู้เรียกส่วนใหญ่ไม่สนผล แต่ตัวส่งแจ้งเตือนต้องรู้)
-async function sendPushMessage(toUserId, text) {
+async function sendPushMessage(toUserId, textOrMessage) {
   if (!lineClient || !toUserId) return false;
   try {
-    await lineClient.pushMessage({ to: toUserId, messages: [{ type: 'text', text }] });
+    const message = typeof textOrMessage === 'string' ? { type: 'text', text: textOrMessage } : textOrMessage;
+    await lineClient.pushMessage({ to: toUserId, messages: [message] });
     return true;
   } catch (error) {
     console.error('LINE pushMessage failed:', error?.response?.data || error.message || error);
@@ -274,6 +276,8 @@ function startNotificationScheduler() {
       schedulerStatus.lastResult = result;
       schedulerStatus.lastError = null;
       schedulerStatus.runs += 1;
+      const reminders = await runPaymentReminders(sendPushMessage);
+      if (reminders.sent) console.log('PAYMENT_REMINDERS_SENT', reminders);
       if (result.sent || result.failed) console.log('NOTIFICATIONS_RUN', result);
       else if (schedulerStatus.runs % heartbeatEvery === 0) console.log('NOTIFICATION_SCHEDULER alive', { runs: schedulerStatus.runs });
     } catch (error) {

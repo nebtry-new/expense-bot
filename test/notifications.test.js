@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { resetData, registerUser, scheduleNotification, listPendingNotifications, cancelNotificationById } = require('../src/services/db');
+const { resetData, registerUser, scheduleNotification, listPendingNotifications, cancelNotificationById, listPendingPaymentConfirmations } = require('../src/services/db');
 const { runPendingNotifications, MAX_ATTEMPTS, __resetAttempts } = require('../src/services/notifications');
 const { handleTextMessage } = require('../src/handlers/text');
 
@@ -168,4 +168,66 @@ test('ดูแจ้งเตือนเมื่อไม่มีอะไ�
   await setup();
   const r = await handleTextMessage('ดูแจ้งเตือน', { lineUserId: 'u1' });
   assert.deepEqual(r.quickReplies.map((q) => q.text), ['แจ้งเตือนใหม่']);
+});
+
+test('nextReminderAt = 09:00 เวลาไทยของวันถัดไป (ไม่ใช่ 24 ชม. นับจากเวลาที่แจ้ง)', () => {
+  const { nextReminderAt } = require('../src/services/payment-reminders');
+  const iso = (ms) => new Date(ms).toISOString();
+  // 08:00 ไทยวันที่ 2 → 09:00 วันที่ 3 (ไม่ใช่ 09:00 วันเดียวกัน)
+  assert.equal(iso(nextReminderAt(Date.parse('2026-11-02T01:00:00Z'))), '2026-11-03T02:00:00.000Z');
+  // 23:30 ไทยวันที่ 2 → 09:00 วันที่ 3 (เร็วกว่า 24 ชม.)
+  assert.equal(iso(nextReminderAt(Date.parse('2026-11-02T16:30:00Z'))), '2026-11-03T02:00:00.000Z');
+  // 00:30 ไทยวันที่ 3 (= 17:30Z วันที่ 2) → วันที่ 4 09:00
+  assert.equal(iso(nextReminderAt(Date.parse('2026-11-02T17:30:00Z'))), '2026-11-04T02:00:00.000Z');
+});
+
+test('จ่ายแล้วแต่ยังไม่รับแล้ว → เตือนเจ้าหนี้ 09:00 ของวันถัดไป แล้วซ้ำทุกวัน พร้อมปุ่ม รับแล้ว จนกว่าจะกดรับ', async () => {
+  const { runPaymentReminders, nextReminderAt } = require('../src/services/payment-reminders');
+  await setup();
+
+  await handleTextMessage('ค่าข้าว 100', { lineUserId: 'u1' }); // แจมค้างปิ๊ก 50
+  await handleTextMessage('จ่ายแล้ว', { lineUserId: 'u2' });
+  const [pending] = await listPendingPaymentConfirmations();
+  const t0 = new Date(pending.requestedAt).getTime();
+  const day1 = nextReminderAt(t0);
+  const day2 = nextReminderAt(day1);
+
+  const { fn, sent } = recorder();
+  assert.deepEqual(await runPaymentReminders(fn, day1 - 60000), { sent: 0 }); // ยังไม่ถึง 09:00 วันถัดไป
+
+  assert.deepEqual(await runPaymentReminders(fn, day1 + 1000), { sent: 1 });
+  assert.equal(sent[0].to, 'u1'); // เตือนเจ้าหนี้ (ปิ๊ก) ไม่ใช่คนจ่าย
+  assert.ok(sent[0].text.text.includes('แจม') && sent[0].text.text.includes('50.00'), sent[0].text.text);
+  assert.equal(sent[0].text.quickReply.items[0].action.text, 'รับแล้ว');
+
+  assert.deepEqual(await runPaymentReminders(fn, day1 + 120000), { sent: 0 }); // ไม่รัวซ้ำในวันเดียวกัน
+  assert.deepEqual(await runPaymentReminders(fn, day2 + 1000), { sent: 1 }); // วันถัดไป 09:00 เตือนอีก
+
+  assert.equal((await handleTextMessage('รับแล้ว', { lineUserId: 'u1' })).type, 'payment_confirmed');
+  assert.deepEqual(await runPaymentReminders(fn, day2 + 10 * 86400000), { sent: 0 }); // ยืนยันแล้วหยุดเตือน
+  assert.equal((await handleTextMessage('รับแล้ว', { lineUserId: 'u1' })).type, 'payment_confirm_missing'); // กดซ้ำไม่เคลียร์ซ้ำ
+});
+
+test('สถานะรอยืนยันรับเงินอยู่ใน DB — ล้าง state ในหน่วยความจำ (เหมือนรีสตาร์ท) แล้ว รับแล้ว ยังใช้ได้', async () => {
+  const { clearAllState } = require('../src/handlers/state');
+  await setup();
+  await handleTextMessage('ค่าข้าว 100', { lineUserId: 'u1' });
+  await handleTextMessage('จ่ายแล้ว', { lineUserId: 'u2' });
+
+  clearAllState(); // จำลองเซิร์ฟเวอร์รีสตาร์ท: state ใน memory หายหมด
+  const r = await handleTextMessage('รับแล้ว', { lineUserId: 'u1' });
+  assert.equal(r.type, 'payment_confirmed');
+  assert.equal((await listPendingPaymentConfirmations()).length, 0);
+});
+
+test('เตือนยืนยันรับเงินส่งไม่สำเร็จ → ไม่นับว่าเตือนแล้ว ลองใหม่รอบหน้า', async () => {
+  const { runPaymentReminders, nextReminderAt } = require('../src/services/payment-reminders');
+  await setup();
+  await handleTextMessage('ค่าข้าว 100', { lineUserId: 'u1' });
+  await handleTextMessage('จ่ายแล้ว', { lineUserId: 'u2' });
+  const [pending] = await listPendingPaymentConfirmations();
+  const due = nextReminderAt(new Date(pending.requestedAt).getTime()) + 1000;
+
+  assert.deepEqual(await runPaymentReminders(recorder(false).fn, due), { sent: 0 });
+  assert.deepEqual(await runPaymentReminders(recorder(true).fn, due + 60000), { sent: 1 });
 });

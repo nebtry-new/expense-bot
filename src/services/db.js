@@ -35,6 +35,7 @@ async function resetData() {
     await supabase.from('expense_splits').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('expenses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('users').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('payment_confirmations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   }
 
   users.length = 0;
@@ -46,6 +47,7 @@ async function resetData() {
   global._unrecognized = [];
   global._nlLog = [];
   global._notifications = [];
+  global._paymentConfirmations = [];
   resetState.pendingReset = false;
 }
 
@@ -824,6 +826,98 @@ async function cancelNotificationById(id) {
   return true;
 }
 
+// ---- สถานะรอยืนยันรับเงิน (จ่ายแล้ว → รับแล้ว) เก็บใน DB เพื่อไม่หายตอนเซิร์ฟเวอร์รีสตาร์ท ----
+const toPaymentConfirmation = (row) => (row ? {
+  id: row.id,
+  creditorLineUserId: row.creditor_line_user_id,
+  debtorLineUserId: row.debtor_line_user_id,
+  creditorName: row.creditor_name,
+  debtorName: row.debtor_name,
+  amount: Number(row.amount),
+  scope: row.scope || null,
+  requestedAt: row.requested_at,
+  lastRemindedAt: row.last_reminded_at || null,
+} : null);
+
+// เจ้าหนี้หนึ่งคนมีรอยืนยันได้ครั้งละหนึ่งรายการ — แจ้งใหม่ = แทนที่อันเก่าที่ยังไม่ยืนยัน
+async function savePaymentConfirmation(p) {
+  const row = {
+    creditor_line_user_id: p.creditorLineUserId,
+    debtor_line_user_id: p.debtorLineUserId || null,
+    creditor_name: p.creditorName,
+    debtor_name: p.debtorName,
+    amount: p.amount,
+    scope: p.scope || null,
+  };
+  if (supabase) {
+    const del = await supabase.from('payment_confirmations').delete()
+      .eq('creditor_line_user_id', p.creditorLineUserId).is('confirmed_at', null);
+    if (del.error) throw del.error;
+    const { data, error } = await supabase.from('payment_confirmations').insert(row).select();
+    if (error) throw error;
+    return toPaymentConfirmation(data?.[0]);
+  }
+  if (!global._paymentConfirmations) global._paymentConfirmations = [];
+  global._paymentConfirmations = global._paymentConfirmations
+    .filter((r) => !(r.creditor_line_user_id === p.creditorLineUserId && !r.confirmed_at));
+  const mem = {
+    id: `pay_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+    ...row,
+    requested_at: new Date().toISOString(),
+    last_reminded_at: null,
+    confirmed_at: null,
+  };
+  global._paymentConfirmations.push(mem);
+  return toPaymentConfirmation(mem);
+}
+
+async function getPaymentConfirmation(creditorLineUserId) {
+  if (supabase) {
+    const { data, error } = await supabase.from('payment_confirmations').select('*')
+      .eq('creditor_line_user_id', creditorLineUserId).is('confirmed_at', null)
+      .order('requested_at', { ascending: false }).limit(1);
+    if (error) throw error;
+    return toPaymentConfirmation(data?.[0]);
+  }
+  return toPaymentConfirmation((global._paymentConfirmations || [])
+    .find((r) => r.creditor_line_user_id === creditorLineUserId && !r.confirmed_at));
+}
+
+async function listPendingPaymentConfirmations() {
+  if (supabase) {
+    const { data, error } = await supabase.from('payment_confirmations').select('*').is('confirmed_at', null);
+    if (error) throw error;
+    return (data || []).map(toPaymentConfirmation);
+  }
+  return (global._paymentConfirmations || []).filter((r) => !r.confirmed_at).map(toPaymentConfirmation);
+}
+
+// ยืนยันแบบ atomic — คืน true เฉพาะคนที่ยืนยันได้ก่อน (กดซ้ำ/พร้อมกันจะไม่เคลียร์ซ้ำ)
+async function completePaymentConfirmation(id) {
+  const now = new Date().toISOString();
+  if (supabase) {
+    const { data, error } = await supabase.from('payment_confirmations')
+      .update({ confirmed_at: now }).eq('id', id).is('confirmed_at', null).select('id');
+    if (error) throw error;
+    return Boolean(data?.length);
+  }
+  const r = (global._paymentConfirmations || []).find((x) => x.id === id);
+  if (!r || r.confirmed_at) return false;
+  r.confirmed_at = now;
+  return true;
+}
+
+async function markPaymentReminded(id, at = new Date()) {
+  if (supabase) {
+    const { error } = await supabase.from('payment_confirmations')
+      .update({ last_reminded_at: at.toISOString() }).eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  const r = (global._paymentConfirmations || []).find((x) => x.id === id);
+  if (r) r.last_reminded_at = at.toISOString();
+}
+
 function getDbStatus() {
   return {
     mode: supabase ? 'supabase' : 'memory',
@@ -868,6 +962,11 @@ module.exports = {
   releaseNotification,
   listPendingNotifications,
   cancelNotificationById,
+  savePaymentConfirmation,
+  getPaymentConfirmation,
+  listPendingPaymentConfirmations,
+  completePaymentConfirmation,
+  markPaymentReminded,
   getDbStatus,
   terminateUserByName,
   restoreUserByName,
