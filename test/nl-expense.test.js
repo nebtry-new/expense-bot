@@ -2,12 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { handleTextMessage } = require('../src/handlers/text');
 const { resetData, registerUser, getExpenses } = require('../src/services/db');
-const { __setInterpreter, validateInterpretation, numbersInText } = require('../src/services/nl-intent');
+const { __setInterpreter, __resetRateLimit, validateInterpretation, numbersInText } = require('../src/services/nl-intent');
 const { clearAllState } = require('../src/handlers/state');
 
 const u1 = { lineUserId: 'u1' };
 
 async function setup() {
+  __resetRateLimit();
   await resetData();
   clearAllState();
   await registerUser({ lineUserId: 'u1', displayName: 'A' });
@@ -131,4 +132,32 @@ test('partner borrowing from me: "แฟนยืม 300" → partner owes me in
   ] });
   const r = await handleTextMessage('แฟนยืม 300', u1);
   assert.ok(r.reply.includes('B ต้องคืน A เต็มจำนวน 300'), r.reply);
+});
+
+const { detectBorrower } = require('../src/services/nl-intent');
+
+test('detectBorrower: "X ยืม Y" → X is the borrower (names from the users)', () => {
+  const names = { senderName: 'ปิ๊ก', partnerName: 'แจม' };
+  assert.equal(detectBorrower('ปิ๊กยืมแจม 500 ไปทำบุญ', names), 'me');
+  assert.equal(detectBorrower('แจมยืมปิ๊ก 500', names), 'partner');
+  assert.equal(detectBorrower('ปิ๊ก ยืมตังแจม 500', names), 'me');
+  assert.equal(detectBorrower('แจมให้ปิ๊กยืม 500', names), 'me');
+  assert.equal(detectBorrower('ปิ๊กให้แจมยืม 500', names), 'partner');
+  assert.equal(detectBorrower('แฟนยืม 300', names), 'partner');
+  assert.equal(detectBorrower('ยืมแฟน 300', names), 'me');
+  assert.equal(detectBorrower('ยืมเงิน 500', names), null);
+});
+
+test('loan direction is enforced in code even if the model gets it backwards', async () => {
+  await setup(); // users: A (u1, sender) and B
+  // model wrongly says: B owes A (payer=me), for "A ยืม B 500"
+  stub({ intent: 'add_expense', confidence: 0.9, expenses: [
+    { description: 'ยืมเงินไปทำบุญ', amount: 500, payer: 'me', split: 'custom', my_share: 0, partner_share: 500 },
+  ] });
+
+  const r = await handleTextMessage('AยืมB 500 ไปทำบุญ', u1);
+  assert.equal(r.type, 'expense_nl');
+  assert.ok(r.reply.includes('A ต้องคืน B เต็มจำนวน 500'), r.reply);
+  const [saved] = await getExpenses();
+  assert.equal(saved.paidByDisplayName, 'B');
 });

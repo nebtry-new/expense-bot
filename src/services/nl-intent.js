@@ -43,6 +43,8 @@ const EXPENSE_TOOL = {
 };
 
 function buildSystemPrompt({ senderName, partnerName, tripNames }) {
+  const me = senderName || 'ฉัน';
+  const other = partnerName || 'แฟน';
   return [
     'คุณเป็นตัวแปลงข้อความภาษาไทยของคู่รักที่แชร์ค่าใช้จ่ายกัน ให้เรียก tool record_expenses เสมอ',
     `ผู้ส่งข้อความ = "me"${senderName ? ` (ชื่อ ${senderName})` : ''}, แฟน = "partner"${partnerName ? ` (ชื่อ ${partnerName})` : ''}`,
@@ -61,6 +63,10 @@ function buildSystemPrompt({ senderName, partnerName, tripNames }) {
     '  - ผู้ส่งเป็นคนยืม: "ยืมแฟน 500", "ขอยืมตังแฟน", "แฟนให้ยืม", "แฟนทดให้", "แฟนโอนให้" → payer=partner, my_share=ยอดรวม, partner_share=0',
     '  - พิมพ์ว่า "ยืม 500" / "ยืมเงิน 500" โดยไม่ระบุว่าใคร → ถือว่าผู้ส่งเป็นคนยืมจากแฟน (payer=partner)',
     '  - description ใช้ "ยืมเงิน" หรือสิ่งที่ระบุ เช่น "ยืมค่าข้าว"',
+    '  - ไวยากรณ์: "A ยืม B 500" = A เป็นคนยืม (ต้องคืน) / B เป็นคนให้ยืม (คนจ่ายเงิน) — คำหลัง "ยืม" คือคนที่ให้ยืม ไม่ใช่คนที่ต้องคืน',
+    `  - ตัวอย่างตามชื่อจริง: "${me}ยืม${other} 500 ไปทำบุญ" → payer=partner, my_share=500, partner_share=0, description="ยืมเงินไปทำบุญ"`,
+    `  - "${other}ยืม${me} 500" → payer=me, my_share=0, partner_share=500`,
+    '  - ข้อความที่ตามหลังจำนวนเงิน (เช่น "ไปทำบุญ", "ซื้อกาแฟ") คือวัตถุประสงค์ ใส่ใน description ไม่มีผลต่อทิศทางหนี้',
     '',
     '- "ของขวัญ" ไม่ได้แปลว่า none: ถ้าไม่ได้บอกชัดว่าไม่หาร/ส่วนตัว/ออกให้แฟน ให้ใช้ half; ถ้าบอกว่าซื้อให้แฟนโดยไม่เอาเงิน (เช่น "ซื้อของขวัญให้แฟน 500 ไม่ต้องหาร") จึงใช้ none',
     'กฎ: amount ต้องมาจากตัวเลขในข้อความจริงเท่านั้น ห้ามเดา ถ้าไม่มีตัวเลขหรือไม่แน่ใจให้ intent=unknown',
@@ -88,6 +94,11 @@ let interpreter = callClaude;
 // Test hook: replace the Claude call with a stub
 function __setInterpreter(fn) {
   interpreter = fn || callClaude;
+}
+
+// Test hook: clear the per-user rate limiter
+function __resetRateLimit() {
+  for (const key of Object.keys(callsByUser)) delete callsByUser[key];
 }
 
 function isAvailable() {
@@ -118,6 +129,56 @@ function numbersInText(text) {
     if (m[2]) values.add(Math.round(n * multipliers.find(([s]) => s === m[2])[1] * 100) / 100);
   }
   return values;
+}
+
+const ME_ALIASES = ['ฉัน', 'เรา', 'ผม', 'หนู', 'ตัวเอง'];
+const PARTNER_ALIASES = ['แฟน', 'เธอ', 'เขา', 'ที่รัก'];
+
+function escapeRe(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ภาษาไทยไม่มีเว้นวรรคระหว่างคำ → ตัดสินทิศทาง "ยืม" ด้วยโค้ด ไม่พึ่งโมเดลอย่างเดียว
+// คืน 'me' | 'partner' = ใครเป็น "ผู้ยืม" (ต้องคืนเงิน) หรือ null ถ้าไม่ชัด
+function detectBorrower(text, { senderName, partnerName } = {}) {
+  const meNames = [...(senderName ? [senderName] : []), ...ME_ALIASES].map(escapeRe);
+  const partnerNames = [...(partnerName ? [partnerName] : []), ...PARTNER_ALIASES].map(escapeRe);
+  const ME = `(?:${meNames.join('|')})`;
+  const PARTNER = `(?:${partnerNames.join('|')})`;
+  const t = String(text).replace(/\s+/g, ' ');
+
+  const test = (re) => re.test(t);
+  // "X ให้ Y ยืม" (X = ผู้ให้, Y = ผู้ยืม)
+  if (test(new RegExp(`${PARTNER}\\s*ให้\\s*${ME}\\s*ยืม`))) return 'me';
+  if (test(new RegExp(`${ME}\\s*ให้\\s*${PARTNER}\\s*ยืม`))) return 'partner';
+  // "X ยืม Y" (X = ผู้ยืม, Y = ผู้ให้ยืม)
+  if (test(new RegExp(`${ME}\\s*(?:ขอ)?ยืม\\s*(?:เงิน|ตัง)?\\s*${PARTNER}`))) return 'me';
+  if (test(new RegExp(`${PARTNER}\\s*(?:ขอ)?ยืม\\s*(?:เงิน|ตัง)?\\s*${ME}`))) return 'partner';
+  // "ให้ X ยืม", "X ยืม ..." (ไม่มี Y)
+  if (test(new RegExp(`ให้\\s*${PARTNER}\\s*ยืม`))) return 'partner';
+  if (test(new RegExp(`ให้\\s*${ME}\\s*ยืม`))) return 'me';
+  if (test(new RegExp(`${PARTNER}\\s*(?:ขอ)?ยืม`))) return 'partner';
+  if (test(new RegExp(`${ME}\\s*(?:ขอ)?ยืม`))) return 'me';
+  // "ยืม Y ..." → ผู้ส่งเป็นผู้ยืมจาก Y
+  if (test(new RegExp(`ยืม\\s*(?:เงิน|ตัง)?\\s*${PARTNER}`))) return 'me';
+  return null;
+}
+
+// บังคับทิศทางหนี้ของรายการยืมตามที่โค้ดอ่านได้ (ทับคำตอบของโมเดลถ้าขัดกัน)
+function applyLoanDirection(expenses, text, names) {
+  if (expenses.length !== 1 || !/ยืม/.test(text)) return expenses;
+  const borrower = detectBorrower(text, names);
+  if (!borrower) return expenses;
+
+  const [e] = expenses;
+  return [{
+    ...e,
+    split: 'custom',
+    numPeople: null,
+    payer: borrower === 'me' ? 'partner' : 'me',
+    myShare: borrower === 'me' ? e.amount : 0,
+    partnerShare: borrower === 'me' ? 0 : e.amount,
+  }];
 }
 
 // Returns { ok: true, expenses } | { ok: false, reason }
@@ -185,11 +246,13 @@ async function interpretExpenseMessage(text, context, userId = 'unknown') {
 
   try {
     const result = await interpreter(trimmed, { tripNames: [], ...context });
-    return validateInterpretation(result, trimmed);
+    const validated = validateInterpretation(result, trimmed);
+    if (!validated.ok) return validated;
+    return { ok: true, expenses: applyLoanDirection(validated.expenses, trimmed, context) };
   } catch (err) {
     console.error('NL_INTERPRET_FAILED', err?.message || err);
     return { ok: false, reason: 'api_error' };
   }
 }
 
-module.exports = { interpretExpenseMessage, validateInterpretation, numbersInText, __setInterpreter };
+module.exports = { interpretExpenseMessage, validateInterpretation, detectBorrower, numbersInText, __setInterpreter, __resetRateLimit };
