@@ -32,7 +32,7 @@ expense-bot/
 ├── CLAUDE.md                 ← ไฟล์นี้
 ├── .env / .env.example
 ├── package.json
-├── assets/richmenu/          ← รูป Rich menu: main.png, more.png (ผู้ออกแบบวางเอง 2500×1686 ≤1MB) + guide-*.png (ภาพช่วยวาง)
+├── assets/richmenu/          ← รูป Rich menu: main.png, more.png (2500×1686 ≤1MB สร้างด้วย scripts/richmenu-art.js) + guide-*.png (ภาพช่วยวาง)
 ├── docs/richmenu-design.md   ← สเปกออกแบบ Rich menu
 ├── scripts/
 │   ├── richmenu.js           ← `npm run richmenu:setup|list|delete` จัดการ Rich menu ผ่าน LINE API
@@ -236,13 +236,13 @@ trips (
 - **Phase 4 ✅ ถามตอบข้อมูล**: โมเดลแปลคำถามเป็น `{kind, period, keywords, payer, trip_name}` (kind: total / balance / recent / trip_total) แล้ว `src/services/queries.js` คำนวณคำตอบจากข้อมูลจริง — ตัวเลขทุกตัวมาจากโค้ด ไม่ใช่โมเดล; ประโยคคำถามที่มีตัวเลข ("ใช้ไป 3 ครั้งไหม") ถูกส่งให้โมเดลก่อน ไม่ตกไปเป็นรายการค่าใช้จ่าย
 - หลักการ: Claude ไม่เขียน DB เอง, parser เดิมเป็นทางหลัก, ล้มเหลวต้องถอยกลับพฤติกรรมเดิม
 
-### Rich menu (LINE) ✅ โค้ดเสร็จ — รอรูปจากผู้ออกแบบ + ติดตั้งต่อ environment
+### Rich menu (LINE) ✅ โค้ด + รูปเสร็จ — เหลือติดตั้งต่อ environment
 
 - 2 แท็บ: **หน้าหลัก** (บันทึกค่าใช้จ่าย · สรุปยอด · จ่าย/รับเงิน · ลบรายการ · ทริป · ถามข้อมูล) และ **เพิ่มเติม** (ตั้งแจ้งเตือน · ดูแจ้งเตือน · หาจุดชาร์จ EV · ตั้งค่ารถ · สรุปเดือนนี้ · วิธีใช้) — แถบแท็บอยู่บนสุด สลับด้วย `richmenuswitch` + alias `expense-bot-main/more`
 - ปุ่มเป็น "ทางลัดเข้า flow เดิม": ปุ่มคำสั่งส่งข้อความเดิม (`สรุป`, `ลบรายการ`, `help` …); ปุ่มที่ต้องมีขั้นต่อ (`action=menu_money|trip|ask|ev`) → `handlers/commands/menu.js` ตอบข้อความ + quick reply (ตัวเลือกเป็นข้อความคำสั่งเดิม จึงผ่านขั้นตอนยืนยัน `ใช่` เหมือนเดิม); ปุ่มที่ต้องพิมพ์ต่อใช้ postback `inputOption: openKeyboard` + `fillInText`
 - ปุ่ม ✈️ ทริป มีหลายชั้น (postback `menu_trip*`, ทุกชั้นมีปุ่ม ← กลับ): ลิสต์ทริปจริง (≤8) → เมนูทริป (สรุป · 📝 โน้ต · 📍 ที่เที่ยว · เส้นทาง · ปิด/เปิดทริป) → โน้ต (แสดง + ➕ เพิ่มโน้ต) / ที่เที่ยว (แสดง + ➕ เพิ่ม · ✓ ไปแล้ว · 🗑 ลบที่ — เลือกจากปุ่มรายชื่อ, ลบมีขั้นยืนยัน, อ้างที่ด้วย id ไม่ใช่ชื่อ) ปุ่ม ➕ ใช้ #แท็ก จึงไม่มีสำหรับชื่อทริปที่มีช่องว่าง
 - วลีของปุ่ม "ถามข้อมูล" (`เดือนนี้ใช้ไปเท่าไหร่` ฯลฯ) ตอบตรงด้วย `queries.js` โดยไม่เรียกโมเดล — ใช้ได้แม้เครดิต AI หมด
-- ติดตั้ง: วาง `assets/richmenu/main.png`, `more.png` ตาม `docs/richmenu-design.md` แล้วรัน `npm run richmenu:setup` **แยกทีละ environment** (dev/prod คนละ LINE channel) — `-- --dry-run` ตรวจก่อนได้
+- ติดตั้ง: รูป `assets/richmenu/main.png`, `more.png` สร้างด้วย `node scripts/richmenu-art.js` (ปรับสี/ชื่อปุ่มแล้วรันซ้ำได้) แล้วรัน `npm run richmenu:setup` **แยกทีละ environment** (dev/prod คนละ LINE channel) — `-- --dry-run` ตรวจก่อนได้
 - ต้องทดสอบบนมือถือจริง: ปุ่ม `fillInText` (เปิดคีย์บอร์ดพร้อมข้อความ) และ OA ที่เคยตั้ง Rich menu ผ่าน LINE OA Manager อาจชนกับเมนูจาก API
 
 ### Sprint 3 — Reminders & To-Do (เริ่มบางส่วน)
