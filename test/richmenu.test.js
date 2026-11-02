@@ -6,7 +6,7 @@ const path = require('node:path');
 const { buildRichMenus, BUTTONS, WIDTH, HEIGHT, ALIAS_MAIN, ALIAS_MORE, NAME_PREFIX } = require('../src/richmenu/definitions');
 const { handleMenuPostback, MENU_QUESTIONS, MAX_QUICK_REPLIES, MAX_LABEL } = require('../src/handlers/commands/menu');
 const { handleTextMessage } = require('../src/handlers/text');
-const { resetData, registerUser, createTrip } = require('../src/services/db');
+const { resetData, registerUser, createTrip, addTripPlace, getTripPlaces } = require('../src/services/db');
 const { __setInterpreter, __resetRateLimit } = require('../src/services/nl-intent');
 const { clearAllState } = require('../src/handlers/state');
 const { inspectPng } = require('../scripts/richmenu');
@@ -119,29 +119,89 @@ test('menu_trip lists real trips as postback buttons (at most 8, labels truncate
   assert.ok(tripButtons.some((i) => i.action.displayText.includes('ชื่อยาว')));
 });
 
-test('menu_trip_detail: ปุ่มของทริปนั้น (สรุป/โน้ต/ที่เที่ยว/เส้นทาง/เพิ่ม/ปิดทริป) และสลับปิด↔เปิดตามสถานะ', async () => {
+const pbData = (m) => m.quickReply.items.map((i) => i.action.fillInText || i.action.data || i.action.text);
+const tap = (m, labelPart) => m.quickReply.items.find((i) => i.action.label.includes(labelPart)).action.data;
+
+test('trip hub: สรุป/โน้ต/ที่เที่ยว/เส้นทาง/ปิดทริป/กลับ และสลับปิด↔เปิดตามสถานะ', async () => {
   await setup();
   const trip = await createTrip('หัวหิน');
-  const m = await handleMenuPostback(`action=menu_trip_detail&id=${encodeURIComponent(trip.id)}`, u1);
+  const id = encodeURIComponent(trip.id);
+  const m = await handleMenuPostback(`action=menu_trip_detail&id=${id}`, u1);
   assertValidQuickReply(m);
-  const cmds = m.quickReply.items.map((i) => i.action.text || i.action.fillInText);
-  assert.deepEqual(cmds, ['สรุปทริป หัวหิน', 'โน้ต หัวหิน', 'ที่เที่ยว หัวหิน', 'เส้นทางทริป หัวหิน', 'โน้ตทริป #หัวหิน ', 'เพิ่มที่ #หัวหิน ', 'ปิดทริป หัวหิน']);
+  assert.deepEqual(pbData(m), [
+    'สรุปทริป หัวหิน', `action=menu_trip_notes&id=${id}`, `action=menu_trip_places&id=${id}`,
+    'เส้นทางทริป หัวหิน', 'ปิดทริป หัวหิน', 'action=menu_trip',
+  ]);
 
   await handleTextMessage('ปิดทริป หัวหิน', u1);
-  const closed = await handleMenuPostback(`action=menu_trip_detail&id=${encodeURIComponent(trip.id)}`, u1);
-  assert.equal(closed.quickReply.items.at(-1).action.text, 'เปิดทริป หัวหิน');
+  const closed = await handleMenuPostback(`action=menu_trip_detail&id=${id}`, u1);
+  assert.ok(pbData(closed).includes('เปิดทริป หัวหิน'));
 
   const gone = await handleMenuPostback('action=menu_trip_detail&id=nope', u1);
   assert.ok(gone.text.includes('ไม่พบทริป'));
+  assert.ok((await handleMenuPostback('action=menu_trip_notes&id=nope', u1)).text.includes('ไม่พบทริป'));
 });
 
-test('menu_trip_detail: ชื่อทริปที่มีช่องว่างไม่มีปุ่มเพิ่ม (แท็ก # ใช้ไม่ได้) แต่ปุ่มอื่นยังส่งชื่อเต็ม', async () => {
+test('trip notes sub menu: แสดงโน้ต + ปุ่มเพิ่มโน้ต + กลับ', async () => {
+  await setup();
+  const trip = await createTrip('หัวหิน');
+  await handleTextMessage('โน้ตทริป เบอร์โรงแรม 032 #หัวหิน', u1);
+  const m = await handleMenuPostback(`action=menu_trip_notes&id=${encodeURIComponent(trip.id)}`, u1);
+  assertValidQuickReply(m);
+  assert.ok(m.text.includes('เบอร์โรงแรม 032'));
+  const data = pbData(m);
+  assert.equal(data[0], 'โน้ตทริป #หัวหิน ');
+  assert.ok(data.at(-1).startsWith('action=menu_trip_detail'));
+});
+
+test('trip places sub menu: ไปแล้ว / ลบที่ ผ่านปุ่มเลือก (ลบมีขั้นยืนยัน) อ้างด้วย id ไม่ใช่ชื่อ', async () => {
+  await setup();
+  const trip = await createTrip('หัวหิน');
+  const id = encodeURIComponent(trip.id);
+  await addTripPlace(trip.id, 'ร้านA', null, 'กิน');
+  await addTripPlace(trip.id, 'ร้านA2', null, 'กิน'); // ชื่อทับกัน: ต้องไม่ไปจับตัวแรกแทน
+
+  const places = await handleMenuPostback(`action=menu_trip_places&id=${id}`, u1);
+  assertValidQuickReply(places);
+  assert.ok(places.text.includes('ร้านA') && places.text.includes('ร้านA2'));
+  const labels = places.quickReply.items.map((i) => i.action.label);
+  assert.ok(labels.some((l) => l.includes('ไปแล้ว')) && labels.some((l) => l.includes('ลบที่')) && labels.some((l) => l.includes('เพิ่มที่เที่ยว')));
+
+  const pick = await handleMenuPostback(tap(places, 'ไปแล้ว'), u1);
+  assertValidQuickReply(pick);
+  const second = pick.quickReply.items.find((i) => i.action.label.includes('ร้านA2')).action.data;
+  const done = await handleMenuPostback(second, u1);
+  assert.ok(done.text.startsWith('✅ "ร้านA2" บันทึกว่าไปแล้ว'), done.text);
+  const rows = await getTripPlaces(trip.id);
+  assert.equal(rows.find((p) => p.name === 'ร้านA2').status, 'visited');
+  assert.notEqual(rows.find((p) => p.name === 'ร้านA').status, 'visited');
+
+  // ลบ: เลือก → ถามยืนยัน → ใช่ ลบเลย (ถ้ากด ไม่ลบ ต้องไม่ลบอะไร)
+  const delPick = await handleMenuPostback(tap(done, 'ลบที่'), u1);
+  const ask = await handleMenuPostback(delPick.quickReply.items.find((i) => i.action.label.includes('ร้านA2')).action.data, u1);
+  assert.ok(ask.text.includes('ใช่หรือไม่'));
+  const no = await handleMenuPostback(tap(ask, 'ไม่ลบ'), u1);
+  assert.equal((await getTripPlaces(trip.id)).length, 2);
+  assert.ok(no.text.includes('ร้านA2'));
+
+  const yes = await handleMenuPostback(tap(ask, 'ใช่ ลบเลย'), u1);
+  assert.ok(yes.text.includes('ลบ "ร้านA2"'));
+  assert.deepEqual((await getTripPlaces(trip.id)).map((p) => p.name), ['ร้านA']);
+
+  // กดปุ่มเดิมซ้ำ (ที่ถูกลบไปแล้ว) → ไม่ error ไม่ลบรายการอื่น
+  const again = await handleMenuPostback(tap(ask, 'ใช่ ลบเลย'), u1);
+  assert.ok(again.text.includes('ถูกลบไปแล้ว'));
+  assert.equal((await getTripPlaces(trip.id)).length, 1);
+});
+
+test('trip sub menu: ทริปที่ไม่มีที่เที่ยว → ไม่มีปุ่ม ไปแล้ว/ลบที่; ชื่อมีช่องว่าง → ไม่มีปุ่มเพิ่ม (#แท็กใช้ไม่ได้)', async () => {
   await setup();
   const trip = await createTrip('ทริป เชียงใหม่');
-  const m = await handleMenuPostback(`action=menu_trip_detail&id=${encodeURIComponent(trip.id)}`, u1);
-  const cmds = m.quickReply.items.map((i) => i.action.text || i.action.fillInText);
-  assert.ok(cmds.includes('สรุปทริป ทริป เชียงใหม่'));
-  assert.ok(!cmds.some((c) => c.includes('#')));
+  const m = await handleMenuPostback(`action=menu_trip_places&id=${encodeURIComponent(trip.id)}`, u1);
+  const labels = m.quickReply.items.map((i) => i.action.label);
+  assert.ok(!labels.some((l) => l.includes('ไปแล้ว') || l.includes('ลบที่') || l.includes('เพิ่ม')), labels.join('|'));
+  const notes = await handleMenuPostback(`action=menu_trip_notes&id=${encodeURIComponent(trip.id)}`, u1);
+  assert.ok(!notes.quickReply.items.some((i) => i.action.label.includes('เพิ่ม')));
 });
 
 test('menu_ask / menu_ev / menu_record / unknown', async () => {

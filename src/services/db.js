@@ -529,6 +529,30 @@ async function markTripPlaceVisited(tripId, placeName) {
   return place;
 }
 
+// อ้างด้วย id ตรงๆ — ใช้กับปุ่มเมนู กันกรณีชื่อที่ทับกัน (ฟังก์ชันตามชื่อด้านบนจับแบบ "มีคำนี้อยู่")
+async function markTripPlaceVisitedById(placeId) {
+  if (supabase) {
+    const { data, error } = await supabase.from('trip_places').update({ status: 'visited' }).eq('id', placeId).select();
+    if (error) throw error;
+    return data?.[0] || null;
+  }
+  const place = tripPlaces.find((p) => String(p.id) === String(placeId));
+  if (!place) return null;
+  place.status = 'visited';
+  return place;
+}
+
+async function deleteTripPlaceById(placeId) {
+  if (supabase) {
+    const { data, error } = await supabase.from('trip_places').delete().eq('id', placeId).select();
+    if (error) throw error;
+    return data?.[0] || null;
+  }
+  const idx = tripPlaces.findIndex((p) => String(p.id) === String(placeId));
+  if (idx === -1) return null;
+  return tripPlaces.splice(idx, 1)[0];
+}
+
 async function getTripPlaces(tripId) {
   if (supabase) {
     const { data, error } = await supabase
@@ -947,6 +971,8 @@ module.exports = {
   getTripPlaces,
   deleteTripPlace,
   markTripPlaceVisited,
+  markTripPlaceVisitedById,
+  deleteTripPlaceById,
   addTripNote,
   getTripNotes,
   getCarProfile,
