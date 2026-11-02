@@ -1,4 +1,5 @@
 const { scheduleNotification, listPendingNotifications, getPendingNotifications, cancelNotificationById, getDbStatus } = require('../../services/db');
+const { notifListState } = require('../state');
 const { schedulerStatus } = require('../../services/notifications');
 const { parseNotificationInput, toLocalDisplay } = require('../../utils/parse-date');
 const { parseRelativeReminder } = require('../../utils/relative-time');
@@ -80,18 +81,35 @@ async function handleScheduleNotification(input, lineUserId) {
   };
 }
 
+const MAX_CANCEL_BUTTONS = 12; // + ปุ่ม ตั้งใหม่ = 13 (ขีดจำกัด quick reply)
+
 async function handleListNotifications(lineUserId) {
   const list = await listPendingNotifications({ lineUserId });
   if (!list.length) {
-    return { type: 'notifications', reply: 'ยังไม่มีแจ้งเตือนที่รออยู่\nตั้งได้ด้วย: แจ้งเตือน 25 ธ.ค. 09:00 ข้อความ' };
+    delete notifListState.pendingByUser[lineUserId];
+    return {
+      type: 'notifications',
+      reply: 'ยังไม่มีแจ้งเตือนที่รออยู่\nตั้งได้ด้วย: แจ้งเตือน 25 ธ.ค. 09:00 ข้อความ',
+      quickReplies: [{ label: '⏰ ตั้งแจ้งเตือนใหม่', text: 'แจ้งเตือนใหม่' }],
+    };
   }
+
+  // จำลำดับที่แสดงไว้ — ปุ่ม/เลขยกเลิกอ้างอิงจากลิสต์นี้ แม้มีแจ้งเตือนถูกส่งไปแล้วระหว่างนั้น
+  notifListState.pendingByUser[lineUserId] = list.map((n) => n.id);
 
   const lines = ['⏰ แจ้งเตือนที่รออยู่\n'];
   list.forEach((n, i) => {
     lines.push(`${i + 1}. ${toLocalDisplay(new Date(n.scheduled_at))} — ${n.message}${n.line_user_id ? '' : ' (ทั้งคู่)'}`);
   });
-  lines.push('\nยกเลิกด้วย: ยกเลิกแจ้งเตือน [เลข]');
-  return { type: 'notifications', reply: lines.join('\n') };
+  lines.push('\nแตะปุ่ม ❌ เพื่อยกเลิก หรือพิมพ์ ยกเลิกแจ้งเตือน [เลข]');
+  return {
+    type: 'notifications',
+    reply: lines.join('\n'),
+    quickReplies: [
+      ...list.slice(0, MAX_CANCEL_BUTTONS).map((n, i) => ({ label: `❌ ${i + 1}. ${n.message}`, text: `ยกเลิกแจ้งเตือน ${i + 1}` })),
+      { label: '⏰ ตั้งใหม่', text: 'แจ้งเตือนใหม่' },
+    ],
+  };
 }
 
 async function handleCancelNotification(input, lineUserId) {
@@ -101,13 +119,24 @@ async function handleCancelNotification(input, lineUserId) {
   }
 
   const list = await listPendingNotifications({ lineUserId });
-  const target = list[num - 1];
+  const snapshot = notifListState.pendingByUser[lineUserId];
+  // มีลิสต์ที่เพิ่งแสดง → เลขหมายถึงรายการในลิสต์นั้น; ไม่มี → ใช้ลิสต์ปัจจุบัน
+  const target = snapshot ? list.find((n) => n.id === snapshot[num - 1]) : list[num - 1];
   if (!target) {
-    return { type: 'error', reply: `ไม่พบแจ้งเตือนหมายเลข ${num}` };
+    delete notifListState.pendingByUser[lineUserId];
+    return snapshot && snapshot[num - 1]
+      ? { type: 'error', reply: 'แจ้งเตือนนี้ถูกส่งหรือยกเลิกไปแล้ว', quickReplies: [{ label: 'ดูแจ้งเตือน', text: 'ดูแจ้งเตือน' }] }
+      : { type: 'error', reply: `ไม่พบแจ้งเตือนหมายเลข ${num}` };
   }
 
   await cancelNotificationById(target.id);
-  return { type: 'notification_cancelled', reply: `ยกเลิกแจ้งเตือน "${target.message}" แล้ว` };
+  // แสดงลิสต์ที่เหลือพร้อมปุ่มต่อ จะได้ยกเลิกรายการอื่นต่อได้ทันที
+  const remaining = await handleListNotifications(lineUserId);
+  return {
+    type: 'notification_cancelled',
+    reply: `ยกเลิกแจ้งเตือน "${target.message}" แล้ว\n\n${remaining.reply}`,
+    quickReplies: remaining.quickReplies,
+  };
 }
 
 // ตรวจว่าระบบแจ้งเตือนทำงานอยู่ไหม — ใช้ไล่ปัญหา "ตั้งแล้วไม่เตือน"

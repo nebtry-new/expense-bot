@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { resetData, registerUser, scheduleNotification, listPendingNotifications } = require('../src/services/db');
+const { resetData, registerUser, scheduleNotification, listPendingNotifications, cancelNotificationById } = require('../src/services/db');
 const { runPendingNotifications, MAX_ATTEMPTS, __resetAttempts } = require('../src/services/notifications');
 const { handleTextMessage } = require('../src/handlers/text');
 
@@ -131,4 +131,41 @@ test('"ตรวจแจ้งเตือน" reports scheduler state, own pen
   assert.equal(r.type, 'notification_status');
   assert.ok(r.reply.includes('ถึงเวลาแล้วแต่ยังไม่ส่ง (ทั้งระบบ): 1'), r.reply);
   assert.ok(r.reply.includes('ฐานข้อมูล:'));
+});
+
+test('ดูแจ้งเตือน มีปุ่ม ❌ ยกเลิกแต่ละรายการ + ตั้งใหม่; ยกเลิกแล้วได้ลิสต์ที่เหลือพร้อมปุ่มต่อ', async () => {
+  await setup();
+  await scheduleNotification({ message: 'ซื้อนม', scheduledAt: FUTURE(), lineUserId: 'u1' });
+  await scheduleNotification({ message: 'โทรหาแม่', scheduledAt: new Date(Date.now() + 2 * 3600 * 1000), lineUserId: 'u1' });
+
+  const list = await handleTextMessage('ดูแจ้งเตือน', { lineUserId: 'u1' });
+  assert.deepEqual(list.quickReplies.map((q) => q.text), ['ยกเลิกแจ้งเตือน 1', 'ยกเลิกแจ้งเตือน 2', 'แจ้งเตือนใหม่']);
+  assert.ok(list.quickReplies.length <= 13);
+
+  const r = await handleTextMessage(list.quickReplies[0].text, { lineUserId: 'u1' });
+  assert.equal(r.type, 'notification_cancelled');
+  assert.ok(r.reply.includes('ซื้อนม') && r.reply.includes('โทรหาแม่'));
+  assert.deepEqual(r.quickReplies.map((q) => q.text), ['ยกเลิกแจ้งเตือน 1', 'แจ้งเตือนใหม่']);
+  assert.deepEqual((await listPendingNotifications()).map((n) => n.message), ['โทรหาแม่']);
+});
+
+test('ปุ่มยกเลิกอ้างอิงลิสต์ที่แสดง — ถ้าแจ้งเตือนถูกส่ง/ยกเลิกไปก่อนแล้ว ไม่ไปยกเลิกรายการอื่นแทน', async () => {
+  await setup();
+  const a = await scheduleNotification({ message: 'รายการ A', scheduledAt: FUTURE(), lineUserId: 'u1' });
+  await scheduleNotification({ message: 'รายการ B', scheduledAt: new Date(Date.now() + 2 * 3600 * 1000), lineUserId: 'u1' });
+  const ctx = { lineUserId: 'u1' };
+
+  await handleTextMessage('ดูแจ้งเตือน', ctx); // 1=A 2=B
+  await cancelNotificationById(a.id); // A หายไประหว่างที่ผู้ใช้ยังไม่ได้กด (เช่นถูกส่งไปแล้ว)
+
+  const r = await handleTextMessage('ยกเลิกแจ้งเตือน 1', ctx);
+  assert.equal(r.type, 'error');
+  assert.ok(r.reply.includes('ถูกส่งหรือยกเลิกไปแล้ว'));
+  assert.deepEqual((await listPendingNotifications()).map((n) => n.message), ['รายการ B']);
+});
+
+test('ดูแจ้งเตือนเมื่อไม่มีอะไรรออยู่ → ปุ่ม ตั้งแจ้งเตือนใหม่', async () => {
+  await setup();
+  const r = await handleTextMessage('ดูแจ้งเตือน', { lineUserId: 'u1' });
+  assert.deepEqual(r.quickReplies.map((q) => q.text), ['แจ้งเตือนใหม่']);
 });
