@@ -76,7 +76,7 @@ function parseExpenseText(rawText = '', userNames = {}) {
   if (partnerName) customKeywords.push(escapeRegex(partnerName));
   const customTriggerPattern = new RegExp(`(${customKeywords.join('|')})`, 'i');
 
-  if (/(ส่วนตัว|ของขวัญ|ไม่หาร|private|personal)/i.test(cleaned)) {
+  if (/(ส่วนตัว|ไม่หาร|private|personal)/i.test(cleaned)) {
     splitMode = 'none';
     splitExplicit = true;
   } else if (customTriggerPattern.test(cleaned) && /\d/.test(cleaned)) {
@@ -138,7 +138,7 @@ function parseTripCreation(text) {
     };
   }
 
-  const noneMatch = trimmed.match(/^(.+?)\s+(ไม่หาร|ส่วนตัว|ของขวัญ|private|personal)$/i);
+  const noneMatch = trimmed.match(/^(.+?)\s+(ไม่หาร|ส่วนตัว|private|personal)$/i);
   if (noneMatch) {
     return { name: noneMatch[1].trim(), defaultSplitMode: 'none', defaultNumPeople: null };
   }

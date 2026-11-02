@@ -20,8 +20,14 @@ test('parses a per-head split and custom text', () => {
 });
 
 test('detects a private expense', () => {
-  const result = parseExpenseText('ของขวัญ 800');
+  const result = parseExpenseText('ค่ากาแฟ 80 ส่วนตัว');
 
   assert.equal(result.splitMode, 'none');
+});
+
+test('"ของขวัญ" alone is not a private keyword (defaults to half)', () => {
+  const result = parseExpenseText('ของขวัญ 800');
+
+  assert.equal(result.splitMode, 'half');
   assert.equal(result.description, 'ของขวัญ');
 });

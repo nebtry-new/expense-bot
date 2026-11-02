@@ -41,7 +41,7 @@ async function handleSlipOverride(text, userContext) {
   let numPeople = null;
   let customAmounts = null;
 
-  if (/(ส่วนตัว|ของขวัญ|ไม่หาร|private|personal)/i.test(text)) {
+  if (/(ส่วนตัว|ไม่หาร|private|personal)/i.test(text)) {
     splitMode = 'none';
   } else {
     const perHeadMatch = text.match(/(?:^|\s)(?:หาร|split)\s*(\d+)(?:\s*คน)?/i)
