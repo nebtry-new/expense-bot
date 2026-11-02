@@ -17,7 +17,7 @@ const callsByUser = {};
 const COMMAND_NAMES = [
   'summary', 'monthly_summary', 'list_trips', 'trip_summary', 'create_trip', 'close_trip', 'open_trip',
   'list_deletable', 'delete_last', 'payment_sent', 'payment_received', 'confirm_billing',
-  'list_notifications', 'cancel_notification', 'help',
+  'list_notifications', 'cancel_notification', 'list_events', 'list_todos', 'help',
 ];
 
 const EXPENSE_TOOL = {
@@ -129,7 +129,8 @@ function buildSystemPrompt({ senderName, partnerName, tripNames, now = new Date(
     '  create_trip=สร้างทริปใหม่ (trip_name), close_trip=ทริปจบแล้วพร้อมเรียกเก็บ (trip_name), open_trip=ยังไม่เก็บเงินทริปนี้ (trip_name),',
     '  list_deletable=ขอลบ/แก้รายการ (keyword ถ้ามี), delete_last=ลบรายการล่าสุด, payment_sent=บอกว่าโอนเงินให้แฟนแล้ว,',
     '  payment_received=บอกว่าได้รับเงินจากแฟนแล้ว, confirm_billing=ให้เรียกเก็บเงินแฟน, list_notifications=ดูแจ้งเตือน,',
-    '  cancel_notification=ยกเลิกแจ้งเตือน (number), help=ขอความช่วยเหลือ',
+    '  cancel_notification=ยกเลิกแจ้งเตือน (number), list_events=ดูวันสำคัญ/วันเกิด/วันครบรอบที่บันทึกไว้,',
+    '  list_todos=ดูงานที่ต้องทำ/To-Do ที่ค้าง, help=ขอความช่วยเหลือ',
     '- reminder: ผู้ใช้ให้ตั้งเตือน ต้องคำนวณ when_local เป็นเวลาไทยจากเวลาปัจจุบัน (บ่ายสาม=15:00, ทุ่มนึง=19:00) ถ้าไม่ระบุเวลาให้ใช้ 09:00; message ไม่รวมวันเวลา',
     '- question: ผู้ใช้ถามข้อมูลค่าใช้จ่าย เช่น ใช้ไปเท่าไหร่ (kind=total, period, keywords), ใครต้องจ่ายใคร (balance), รายการล่าสุด (recent), ยอดทริป (trip_total)',
     '  อย่าตอบตัวเลขเอง แค่ระบุ kind/period/keywords — ระบบจะคำนวณเอง',

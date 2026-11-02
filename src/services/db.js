@@ -36,6 +36,8 @@ async function resetData() {
     await supabase.from('expenses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('users').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('payment_confirmations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('special_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('todos').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   }
 
   users.length = 0;
@@ -48,6 +50,8 @@ async function resetData() {
   global._nlLog = [];
   global._notifications = [];
   global._paymentConfirmations = [];
+  global._events = [];
+  global._todos = [];
   resetState.pendingReset = false;
 }
 
@@ -850,6 +854,143 @@ async function cancelNotificationById(id) {
   return true;
 }
 
+// ---- Sprint 3: วันสำคัญ (วนทุกปี) + To-Do ร่วมกัน (migration_012) ----
+const toEvent = (row) => (row ? {
+  id: row.id,
+  title: row.title,
+  month: row.month,
+  day: row.day,
+  year: row.year ?? null,
+  kind: row.kind || 'other',
+  createdByLineUserId: row.created_by_line_user_id || null,
+  remindedKeys: row.reminded_keys || [],
+  createdAt: row.created_at,
+} : null);
+
+const toTodo = (row) => (row ? {
+  id: row.id,
+  title: row.title,
+  dueDate: row.due_date || null, // 'YYYY-MM-DD' (วันที่ตามเวลาไทย)
+  createdByLineUserId: row.created_by_line_user_id || null,
+  createdByName: row.created_by_name || null,
+  doneAt: row.done_at || null,
+  doneByName: row.done_by_name || null,
+  remindedKeys: row.reminded_keys || [],
+  createdAt: row.created_at,
+} : null);
+
+const memId = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+
+// เพิ่มรหัส "รอบที่เตือนแล้ว" (อ่าน → เขียน; ตัวรันมีตัวเดียวในเซิร์ฟเวอร์ จึงไม่ต้อง atomic)
+async function appendReminderKey(table, memList, id, key) {
+  if (supabase) {
+    const { data, error } = await supabase.from(table).select('reminded_keys').eq('id', id).maybeSingle();
+    if (error) throw error;
+    if (!data) return;
+    const keys = Array.from(new Set([...(data.reminded_keys || []), key]));
+    const upd = await supabase.from(table).update({ reminded_keys: keys }).eq('id', id);
+    if (upd.error) throw upd.error;
+    return;
+  }
+  const row = (memList() || []).find((x) => x.id === id);
+  if (row && !row.reminded_keys.includes(key)) row.reminded_keys.push(key);
+}
+
+async function addSpecialEvent({ title, month, day, year = null, kind = 'other', lineUserId = null, remindedKeys = [] }) {
+  const row = { title, month, day, year, kind, created_by_line_user_id: lineUserId, reminded_keys: remindedKeys };
+  if (supabase) {
+    const { data, error } = await supabase.from('special_events').insert(row).select();
+    if (error) throw error;
+    return toEvent(data[0]);
+  }
+  const mem = { id: memId('event'), ...row, created_at: new Date().toISOString() };
+  (global._events = global._events || []).push(mem);
+  return toEvent(mem);
+}
+
+async function listSpecialEvents() {
+  if (supabase) {
+    const { data, error } = await supabase.from('special_events').select('*').order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data || []).map(toEvent);
+  }
+  return (global._events || []).map(toEvent);
+}
+
+async function deleteSpecialEvent(id) {
+  if (supabase) {
+    const { data, error } = await supabase.from('special_events').delete().eq('id', id).select('id');
+    if (error) throw error;
+    return Boolean(data?.length);
+  }
+  const idx = (global._events || []).findIndex((e) => e.id === id);
+  if (idx === -1) return false;
+  global._events.splice(idx, 1);
+  return true;
+}
+
+const markEventReminded = (id, key) => appendReminderKey('special_events', () => global._events, id, key);
+
+async function addTodo({ title, dueDate = null, lineUserId = null, createdByName = null, remindedKeys = [] }) {
+  const row = { title, due_date: dueDate, created_by_line_user_id: lineUserId, created_by_name: createdByName, reminded_keys: remindedKeys };
+  if (supabase) {
+    const { data, error } = await supabase.from('todos').insert(row).select();
+    if (error) throw error;
+    return toTodo(data[0]);
+  }
+  const mem = { id: memId('todo'), ...row, done_at: null, done_by_name: null, created_at: new Date().toISOString() };
+  (global._todos = global._todos || []).push(mem);
+  return toTodo(mem);
+}
+
+// งานที่ยังไม่เสร็จ: มีกำหนดวันเรียงตามวัน (ใกล้สุดก่อน) แล้วตามด้วยงานที่ไม่มีกำหนด (เก่าสุดก่อน)
+async function listOpenTodos() {
+  let rows;
+  if (supabase) {
+    const { data, error } = await supabase.from('todos').select('*').is('done_at', null).order('created_at', { ascending: true });
+    if (error) throw error;
+    rows = data || [];
+  } else {
+    rows = (global._todos || []).filter((t) => !t.done_at);
+  }
+  return rows.map(toTodo).sort((a, b) => {
+    if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate) || a.createdAt.localeCompare(b.createdAt);
+    if (a.dueDate) return -1;
+    if (b.dueDate) return 1;
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+}
+
+// ทำเครื่องหมายเสร็จแบบ atomic — คืน todo ถ้าเพิ่งทำเสร็จ, null ถ้าไม่พบ/เสร็จไปแล้ว (กดซ้ำไม่ซ้ำ)
+async function completeTodo(id, doneByName = null) {
+  const now = new Date().toISOString();
+  if (supabase) {
+    const { data, error } = await supabase.from('todos')
+      .update({ done_at: now, done_by_name: doneByName }).eq('id', id).is('done_at', null).select();
+    if (error) throw error;
+    return toTodo(data?.[0]);
+  }
+  const t = (global._todos || []).find((x) => x.id === id);
+  if (!t || t.done_at) return null;
+  t.done_at = now;
+  t.done_by_name = doneByName;
+  return toTodo(t);
+}
+
+async function deleteTodo(id) {
+  if (supabase) {
+    const { data, error } = await supabase.from('todos').delete().eq('id', id).select('id');
+    if (error) throw error;
+    return Boolean(data?.length);
+  }
+  const idx = (global._todos || []).findIndex((t) => t.id === id);
+  if (idx === -1) return false;
+  global._todos.splice(idx, 1);
+  return true;
+}
+
+const markTodoReminded = (id, key) => appendReminderKey('todos', () => global._todos, id, key);
+
 // ---- สถานะรอยืนยันรับเงิน (จ่ายแล้ว → รับแล้ว) เก็บใน DB เพื่อไม่หายตอนเซิร์ฟเวอร์รีสตาร์ท ----
 const toPaymentConfirmation = (row) => (row ? {
   id: row.id,
@@ -993,6 +1134,15 @@ module.exports = {
   listPendingPaymentConfirmations,
   completePaymentConfirmation,
   markPaymentReminded,
+  addSpecialEvent,
+  listSpecialEvents,
+  deleteSpecialEvent,
+  markEventReminded,
+  addTodo,
+  listOpenTodos,
+  completeTodo,
+  deleteTodo,
+  markTodoReminded,
   getDbStatus,
   terminateUserByName,
   restoreUserByName,

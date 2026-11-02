@@ -5,6 +5,7 @@ const { handleListUnrecognized, handleNaturalLanguageExpense, handleExpenseLines
 const { handleSlipOverride } = require('./commands/slip');
 const { handleCreateTrip, handleListTrips, handleTripSummary, handleSetTripBillable, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
 const { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification, handleNotificationStatus } = require('./commands/notifications');
+const { handleAddEvent, handleListEvents, handleDeleteEvent, handleAddTodo, handleListTodos, handleCompleteTodo, handleDeleteTodo } = require('./commands/planner');
 const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
 const { normalizeThaiNumbers } = require('../utils/thai-numbers');
@@ -71,6 +72,17 @@ const HELP_TEXT = [
   '• ตั้งแล้วไม่เตือน? ตรวจระบบ: ตรวจแจ้งเตือน',
   '• ยกเลิก: ยกเลิกแจ้งเตือน [เลข]',
   '',
+  '━━ 🎉 วันสำคัญ (เตือนทุกปี 7 วัน / 1 วันก่อน / วันจริง) ━━',
+  '• เพิ่ม: เพิ่มวันสำคัญ วันเกิดแฟน 14 มี.ค. (ใส่ปีด้วยจะบอกอายุ/ครบกี่ปี: 14 มี.ค. 2540)',
+  '• ดูทั้งหมด: วันสำคัญ',
+  '• ลบ: ลบวันสำคัญ [เลข]',
+  '',
+  '━━ 📋 งานที่ต้องทำ (To-Do ร่วมกัน) ━━',
+  '• เพิ่ม: เพิ่มงาน จองโรงแรม 25 ธ.ค. / เพิ่มงาน ซื้อนม พรุ่งนี้ (ไม่ใส่วันก็ได้)',
+  '• ดูทั้งหมด: งาน',
+  '• ทำเสร็จ: เสร็จ [เลข] (หลายข้อ: เสร็จ 1 3) · ลบ: ลบงาน [เลข]',
+  '• งานที่มีกำหนด จะเตือนทั้งคู่ 1 วันก่อนและวันครบกำหนด',
+  '',
   '━━ 🔌 EV ━━',
   '• ตั้งค่าระยะรถ: ตั้งค่ารถ 400 กม.',
   '• หาจุดชาร์จ (แชร์ link): ส่ง Google Maps directions link แล้วบอกแบต %',
@@ -92,7 +104,7 @@ const MAPS_URL_RE = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.
 // Commands that never belong to a free-text flow (datetime picker reply)
 // ลบ 2 / ลบ 1 3 5 / ลบ 1,3 / ลบ 1 และ 3 / ลบ 2-4
 const DELETE_PICK_RE = /^ลบ\s*(\d+(?:\s*(?:-|ถึง)\s*\d+)?(?:(?:\s*,\s*|\s+และ\s+|\s+)\d+(?:\s*(?:-|ถึง)\s*\d+)?)*)$/i;
-const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+[\d\s,\-และถึง]*|ตรวจแจ้งเตือน|สถานะแจ้งเตือน|ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
+const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+[\d\s,\-และถึง]*|ตรวจแจ้งเตือน|สถานะแจ้งเตือน|ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน|วันสำคัญ|งาน|รายการงาน|todo)$|^(เพิ่มวันสำคัญ|ลบวันสำคัญ|เพิ่มงาน|ลบงาน|เสร็จ|สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
 
 // ประโยคที่บอกว่าใครจ่าย/เลี้ยงใคร parser เดิมอ่านไม่ออก (มันเห็นแค่ "ชื่อ + ตัวเลข") → ให้ Claude ตีความก่อน
 const NL_CUE_RE = /(ออกให้|เลี้ยง|จ่ายแทน|แฟนออก|แฟนจ่าย|ออกค่า|จ่ายให้|โอนให้|ยืม|คืน|ทด(?:ให้|ไว้|ก่อน)|สำรอง|ฝากจ่าย|ฝากซื้อ|ต้องคืน|ขอคืน)/;
@@ -349,6 +361,20 @@ async function handleTextMessage(text, userContext = {}) {
   if (listNotesMatch) {
     return handleListNotes(listNotesMatch[1].trim());
   }
+
+  const addEventMatch = normalized.match(/^เพิ่มวันสำคัญ\s*(.+)$/i);
+  if (addEventMatch) return handleAddEvent(addEventMatch[1].trim(), lineUserId);
+  if (/^วันสำคัญ$/i.test(normalized)) return handleListEvents(lineUserId);
+  const delEventMatch = normalized.match(/^ลบวันสำคัญ\s*(.+)$/i);
+  if (delEventMatch) return handleDeleteEvent(delEventMatch[1].trim(), lineUserId);
+
+  const addTodoMatch = normalized.match(/^เพิ่มงาน\s*(.+)$/i);
+  if (addTodoMatch) return handleAddTodo(addTodoMatch[1].trim(), lineUserId);
+  if (/^(งาน|รายการงาน|todo)$/i.test(normalized)) return handleListTodos(lineUserId);
+  const doneTodoMatch = normalized.match(/^(?:งาน)?เสร็จ\s*(\d[\d\s,\-ถึง]*)$/i);
+  if (doneTodoMatch) return handleCompleteTodo(doneTodoMatch[1], lineUserId);
+  const delTodoMatch = normalized.match(/^ลบงาน\s*(\d[\d\s,\-ถึง]*)$/i);
+  if (delTodoMatch) return handleDeleteTodo(delTodoMatch[1], lineUserId);
 
   if (/^แจ้งเตือนใหม่$/i.test(normalized)) {
     return handleShowDatetimePicker();

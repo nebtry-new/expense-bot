@@ -23,6 +23,8 @@ const COMMANDS = {
   confirm_billing: { confirm: true, label: () => 'เรียกเก็บเงินจากแฟนตามยอดที่สรุปไว้', text: () => 'เรียกเก็บเงิน' },
   list_notifications: { text: () => 'ดูแจ้งเตือน' },
   cancel_notification: { needs: 'number', text: (a) => `ยกเลิกแจ้งเตือน ${a.number}` },
+  list_events: { text: () => 'วันสำคัญ' },
+  list_todos: { text: () => 'งาน' },
   help: { text: () => 'help' },
 };
 

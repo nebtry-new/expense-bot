@@ -86,4 +86,4 @@ function parseNotificationInput(input) {
   return null;
 }
 
-module.exports = { parseNotificationInput, toLocalDisplay, parseDatetimePickerValue };
+module.exports = { parseNotificationInput, toLocalDisplay, parseDatetimePickerValue, THAI_MONTHS, MONTH_LABELS };

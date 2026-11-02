@@ -11,6 +11,7 @@ const { handleMenuPostback } = require('./handlers/commands/menu');
 const { evRouteState, datetimePickerState } = require('./handlers/state');
 const { parseDatetimePickerValue, toLocalDisplay } = require('./utils/parse-date');
 const { runPaymentReminders } = require('./services/payment-reminders');
+const { runPlannerReminders } = require('./services/planner-reminders');
 const { buildQuickReplyMessage } = require('./utils/quick-reply');
 
 dotenv.config();
@@ -278,6 +279,8 @@ function startNotificationScheduler() {
       schedulerStatus.runs += 1;
       const reminders = await runPaymentReminders(sendPushMessage);
       if (reminders.sent) console.log('PAYMENT_REMINDERS_SENT', reminders);
+      const planner = await runPlannerReminders(sendPushMessage);
+      if (planner.events || planner.todos) console.log('PLANNER_REMINDERS_SENT', planner);
       if (result.sent || result.failed) console.log('NOTIFICATIONS_RUN', result);
       else if (schedulerStatus.runs % heartbeatEvery === 0) console.log('NOTIFICATION_SCHEDULER alive', { runs: schedulerStatus.runs });
     } catch (error) {
