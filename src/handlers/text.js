@@ -91,7 +91,8 @@ function isSlipReply(text) {
 
 function isEvReply(text, pending) {
   if (MAPS_URL_RE.test(text) || /^\d+%?$/.test(text)) return true;
-  return pending.type === 'location' && !pending.destination && /^(?:ไป\s+)?.+?\s+\d+%?$/.test(text);
+  // location flow รอปลายทาง: ข้อความอิสระถือเป็นคำตอบ (handler จะแจ้งรูปแบบที่ถูกต้อง) ยกเว้นเป็นคำสั่งอื่น
+  return pending.type === 'location' && !pending.destination && !COMMAND_RE.test(text);
 }
 
 // A pending flow only survives if the new message is a reply to it;
