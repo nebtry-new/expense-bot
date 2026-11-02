@@ -21,7 +21,7 @@ LINE Chatbot สำหรับคู่รัก ใช้บันทึกค
 | AI / Vision | Claude API (claude-sonnet-4-6) |
 | Database | Supabase (PostgreSQL) |
 | Hosting | Railway (deployed ✅) |
-| Local dev | ngrok |
+| ทดสอบ | `npm test` (in-memory, `DEVELOPMENT_MODE=true`) + ทดสอบบน env ที่ deploy แล้ว (ไม่ใช้ ngrok/localtunnel แล้ว) |
 
 ---
 
@@ -30,22 +30,35 @@ LINE Chatbot สำหรับคู่รัก ใช้บันทึกค
 ```
 expense-bot/
 ├── CLAUDE.md                 ← ไฟล์นี้
-├── .env                      ← ต้องสร้างเอง (ดู .env.example)
-├── .env.example
-├── .gitignore
+├── .env / .env.example
 ├── package.json
+├── scripts/
+│   ├── golden-runner.js      ← รันประโยคตัวอย่างผ่าน handleTextMessage แล้วตรวจผล
+│   └── eval-nl.js            ← `npm run eval:nl` ประเมินโมเดลจริง (ใช้เครดิต API)
+├── supabase/                 ← schema.sql + migration_001…009
+├── test/
+│   ├── golden/nl-sentences.json  ← ประโยคตัวอย่าง + ผลที่ควรได้ (เพิ่มที่นี่ก่อนแก้บั๊ก NL)
+│   └── *.test.js
 └── src/
-    ├── index.js              ← Express server + LINE webhook
+    ├── index.js              ← Express server + LINE webhook + /internal/run-notifications
     ├── handlers/
-    │   ├── message.js        ← route event → handler ที่ถูกต้อง
-    │   ├── slip.js           ← รับรูป slip → Claude Vision → บันทึก
-    │   └── text.js           ← parse คำสั่ง + คำนวณสรุปยอด
+    │   ├── text.js           ← route ข้อความ → command + pipeline บันทึกค่าใช้จ่าย + help
+    │   ├── state.js          ← pending state ต่อ user (slip, ev, ลบ, datetime ฯลฯ) — ถูกล้างเมื่อข้อความถัดไปไม่ใช่คำตอบ
+    │   └── commands/         ← expense, slip, settlement, summary, trip, ev, notifications
     ├── services/
-    │   ├── claude.js         ← wrapper Claude API (vision)
-    │   ├── db.js             ← Supabase queries ทั้งหมด
-    │   └── ocm.js            ← Open Charge Map API + Nominatim geocoding
+    │   ├── db.js             ← Supabase queries ทั้งหมด (+ in-memory เมื่อ DEVELOPMENT_MODE=true)
+    │   ├── claude.js         ← Claude Vision อ่าน slip
+    │   ├── nl-intent.js      ← NL layer: ตีความประโยค → รายการค่าใช้จ่าย (ยืม/คืนเงินตัดสินด้วยโค้ด)
+    │   ├── places.js         ← Google Places/Directions สำหรับ EV
+    │   ├── notifications.js  ← ส่งแจ้งเตือนที่ถึงเวลา
+    │   └── ocm.js            ← (ไม่ได้ใช้แล้ว) Open Charge Map
     └── utils/
-        └── parser.js         ← parse text → split mode
+        ├── parser.js         ← parse text → split mode
+        ├── balance.js        ← คำนวณยอดค้าง
+        ├── billing.js        ← เลือกรายการที่เข้ารอบเรียกเก็บ (ทริปที่ปิดแล้ว/ยังไม่ปิด)
+        ├── thai-numbers.js   ← "สามร้อย" → 300
+        ├── date-phrases.js   ← "เมื่อวาน" → createdAt ย้อนหลัง
+        └── format.js, parse-date.js, fetch-title.js
 ```
 
 ---
@@ -108,6 +121,15 @@ monthly_summaries (
   total_paid  decimal(10,2),
   total_owed  decimal(10,2),
   cleared_at  timestamptz
+)
+
+-- ข้อความที่ NL layer ตีความไม่ได้ (migration_009) — ดูด้วยคำสั่ง "ข้อความที่ไม่เข้าใจ"
+unrecognized_messages (
+  id           uuid PK,
+  line_user_id text,
+  text         text,
+  reason       text,           -- เช่น unknown, amount_not_in_text, api_error
+  created_at   timestamptz
 )
 
 -- ทริปท่องเที่ยว
@@ -215,29 +237,31 @@ LINE_CHANNEL_ACCESS_TOKEN=
 ANTHROPIC_API_KEY=
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=        ← sb_secret_... (ไม่ใช่ publishable key)
+GOOGLE_PLACES_API_KEY=      ← EV route (places.js)
+NL_MODEL=claude-haiku-5-5   ← โมเดลของ NL layer (ไม่ตั้งก็ใช้ค่านี้)
+CRON_SECRET=                ← ป้องกัน POST /internal/run-notifications
+DEVELOPMENT_MODE=true       ← ใช้ in-memory แทน Supabase (ใช้ตอนรัน npm test / local เท่านั้น)
 PORT=3000
 ```
 
+> ANTHROPIC_API_KEY ใช้ทั้งอ่าน slip และ NL layer — ถ้าเครดิตหมด slip จะอ่านไม่ได้ และประโยคที่ต้องใช้ AI จะตอบว่า "AI ใช้ไม่ได้" (คำสั่งปกติ + ประโยคยืม/คืนเงินที่โค้ดอ่านเองยังใช้ได้)
+
 ---
 
-## วิธี Run ระหว่าง Dev
+## วิธีทดสอบ / Run
+
+ไม่ใช้ tunnel (ngrok/localtunnel) แล้ว:
 
 ```bash
-# Terminal 1 — รัน bot
-npm run dev
-
-# Terminal 2 — เปิด tunnel ให้ LINE เข้าถึงได้
-ngrok http 3000
+npm test            # ชุดทดสอบทั้งหมด (in-memory ไม่แตะ DB จริง ไม่เรียก Claude API)
+npm run eval:nl     # ประเมินประโยคที่ต้องใช้โมเดลจริง (ใช้เครดิต API)
 ```
 
-เอา ngrok URL ไปใส่ที่ LINE Developers → Messaging API → Webhook URL
-```
-https://xxxx.ngrok-free.app/webhook
-```
+ทดสอบกับ LINE จริงทำบน env ที่ deploy แล้ว (Railway) — รัน migration ใน Supabase ก่อน deploy ทุกครั้ง
 
 ---
 
-## วิธีทดสอบ (ลำดับนี้)
+## วิธีทดสอบด้วยมือบน LINE (ลำดับนี้)
 
 ```
 1. ทั้งคู่พิมพ์ "ลงทะเบียน ชื่อ" ก่อน
