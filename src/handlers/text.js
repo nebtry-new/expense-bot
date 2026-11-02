@@ -7,7 +7,7 @@ const { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, ha
 const { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification } = require('./commands/notifications');
 const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
-const { clearAllState, slipConfirmState, datetimePickerState } = require('./state');
+const { clearAllState, slipConfirmState, datetimePickerState, deleteConfirmState } = require('./state');
 
 const HELP_TEXT = [
   'คู่มือการใช้งาน',
@@ -63,6 +63,45 @@ const HELP_TEXT = [
   'หมายเหตุ: รองรับผู้ใช้ได้สูงสุด 2 คนเท่านั้น',
 ].join('\n');
 
+const YES_RE = /^(ใช่|yes|ok|เรียกเก็บเงิน)$/i;
+const CANCEL_RE = /^(ยกเลิก|cancel|ไม่เอา)$/i;
+const MAPS_URL_RE = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/;
+// Commands that never belong to a free-text flow (datetime picker reply)
+const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
+
+function isSlipReply(text) {
+  return YES_RE.test(text)
+    || CANCEL_RE.test(text)
+    || /(ส่วนตัว|ของขวัญ|ไม่หาร|private|personal)/i.test(text)
+    || /(?:^|\s)(?:หาร|split)\s*\d+/i.test(text)
+    || /^\d+\s*\/\s*\d+$/.test(text)
+    || /(ฉัน|แฟน)\s*\d/.test(text)
+    || /^\S+\s*\d+(\.\d+)?\s+\S+\s*\d+(\.\d+)?$/.test(text);
+}
+
+function isEvReply(text, pending) {
+  if (MAPS_URL_RE.test(text) || /^\d+%?$/.test(text)) return true;
+  return pending.type === 'location' && !pending.destination && /^(?:ไป\s+)?.+?\s+\d+%?$/.test(text);
+}
+
+// A pending flow only survives if the new message is a reply to it;
+// otherwise drop it so a later "ใช่"/number doesn't resurrect the old flow.
+function dropStalePendingFlows(text, lineUserId) {
+  const slip = slipConfirmState.pendingByUser[lineUserId];
+  if (slip && !isSlipReply(text)) delete slipConfirmState.pendingByUser[lineUserId];
+
+  const ev = evRouteState.pendingByUser[lineUserId];
+  if (ev && !isEvReply(text, ev)) delete evRouteState.pendingByUser[lineUserId];
+
+  if (deleteConfirmState.pendingByUser[lineUserId] && !YES_RE.test(text)) {
+    delete deleteConfirmState.pendingByUser[lineUserId];
+  }
+
+  if (datetimePickerState.pendingByUser[lineUserId] && COMMAND_RE.test(text)) {
+    delete datetimePickerState.pendingByUser[lineUserId];
+  }
+}
+
 async function handleTextMessage(text, userContext = {}) {
   const normalized = String(text || '').trim();
   const lineUserId = userContext.lineUserId || 'unknown';
@@ -70,6 +109,8 @@ async function handleTextMessage(text, userContext = {}) {
   if (!normalized) {
     return { type: 'noop', reply: 'ไม่มีข้อความให้ประมวลผล' };
   }
+
+  dropStalePendingFlows(normalized, lineUserId);
 
   if (/^(help|ช่วยเหลือ|manual|คู่มือ)$/i.test(normalized)) {
     return { type: 'help', reply: HELP_TEXT };
