@@ -295,6 +295,7 @@ function handlePickDeleteExpense(index, userContext) {
     return { type: 'error', reply: `ไม่พบรายการเลข ${index} กรุณาเลือกเลข 1-${list.length}` };
   }
 
+  console.log('DELETE_PICK', { lineUserId, index, picked: target.id, list: list.map((t) => t.id) });
   delete deleteListState.pendingByUser[lineUserId];
   deleteConfirmState.pendingByUser[lineUserId] = target;
 

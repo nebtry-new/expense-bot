@@ -307,7 +307,8 @@ async function getExpenses() {
     const { data, error } = await supabase
       .from('expenses')
       .select('*, expense_splits(user_id, amount)')
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true }); // tie-break: created_at ซ้ำกันได้ (batch) ต้องได้ลำดับเดิมทุกครั้งที่ query
     if (error) throw error;
 
     return data.map((expense) => {
