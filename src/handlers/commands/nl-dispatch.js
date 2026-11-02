@@ -67,6 +67,14 @@ async function dispatchReminder(other, userContext, now) {
   };
 }
 
+// ตอบคำถามด้วยข้อมูลจริง (ใช้ร่วมกับเมนู/วลีคำถามสำเร็จรูปที่ไม่ผ่านโมเดล)
+async function answerForUser(question, userContext, now = new Date()) {
+  const lineUserId = userContext.lineUserId || 'unknown';
+  const [users, expenses, trips] = await Promise.all([getUsers(), getExpenses(), getTrips()]);
+  const sender = users.find((u) => u.lineUserId === lineUserId) || null;
+  return answerQuestion(question, { expenses, users, trips, sender, now });
+}
+
 async function dispatchQuestion(other, userContext, now) {
   const lineUserId = userContext.lineUserId || 'unknown';
   const [users, expenses, trips] = await Promise.all([getUsers(), getExpenses(), getTrips()]);
@@ -80,4 +88,4 @@ async function dispatchQuestion(other, userContext, now) {
   return { type: 'nl_answer', reply: answer.reply };
 }
 
-module.exports = { dispatchOtherIntent, COMMANDS };
+module.exports = { dispatchOtherIntent, answerForUser, COMMANDS };

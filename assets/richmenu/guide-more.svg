@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2500" height="1686" viewBox="0 0 2500 1686">
+<rect width="2500" height="1686" fill="#f4f6f8"/>
+<rect x="0" y="0" width="1250" height="150" fill="#dfe3e8"/>
+<text x="625" y="105" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="86" font-weight="700" text-anchor="middle" fill="#5b6670">หน้าหลัก</text>
+<rect x="1250" y="0" width="1250" height="150" fill="#06c755"/>
+<text x="1875" y="105" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="86" font-weight="700" text-anchor="middle" fill="#fff">เพิ่มเติม</text>
+<rect x="0" y="150" width="833" height="768" fill="#ffffff" stroke="#c4cbd2" stroke-width="6"/>
+<rect x="40" y="190" width="753" height="688" fill="none" stroke="#ff5a5f" stroke-width="3" stroke-dasharray="18 12"/>
+<text x="416.5" y="514" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="92" text-anchor="middle" fill="#9aa4ad">ตั้งแจ้งเตือน</text>
+<text x="416.5" y="624" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="54" text-anchor="middle" fill="#b8c0c7">833×768 @ (0,150)</text>
+<rect x="833" y="150" width="834" height="768" fill="#ffffff" stroke="#c4cbd2" stroke-width="6"/>
+<rect x="873" y="190" width="754" height="688" fill="none" stroke="#ff5a5f" stroke-width="3" stroke-dasharray="18 12"/>
+<text x="1250" y="514" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="92" text-anchor="middle" fill="#9aa4ad">ดูแจ้งเตือน</text>
+<text x="1250" y="624" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="54" text-anchor="middle" fill="#b8c0c7">834×768 @ (833,150)</text>
+<rect x="1667" y="150" width="833" height="768" fill="#ffffff" stroke="#c4cbd2" stroke-width="6"/>
+<rect x="1707" y="190" width="753" height="688" fill="none" stroke="#ff5a5f" stroke-width="3" stroke-dasharray="18 12"/>
+<text x="2083.5" y="514" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="92" text-anchor="middle" fill="#9aa4ad">หาจุดชาร์จ EV</text>
+<text x="2083.5" y="624" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="54" text-anchor="middle" fill="#b8c0c7">833×768 @ (1667,150)</text>
+<rect x="0" y="918" width="833" height="768" fill="#ffffff" stroke="#c4cbd2" stroke-width="6"/>
+<rect x="40" y="958" width="753" height="688" fill="none" stroke="#ff5a5f" stroke-width="3" stroke-dasharray="18 12"/>
+<text x="416.5" y="1282" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="92" text-anchor="middle" fill="#9aa4ad">ตั้งค่ารถ</text>
+<text x="416.5" y="1392" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="54" text-anchor="middle" fill="#b8c0c7">833×768 @ (0,918)</text>
+<rect x="833" y="918" width="834" height="768" fill="#ffffff" stroke="#c4cbd2" stroke-width="6"/>
+<rect x="873" y="958" width="754" height="688" fill="none" stroke="#ff5a5f" stroke-width="3" stroke-dasharray="18 12"/>
+<text x="1250" y="1282" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="92" text-anchor="middle" fill="#9aa4ad">สรุปเดือนนี้</text>
+<text x="1250" y="1392" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="54" text-anchor="middle" fill="#b8c0c7">834×768 @ (833,918)</text>
+<rect x="1667" y="918" width="833" height="768" fill="#ffffff" stroke="#c4cbd2" stroke-width="6"/>
+<rect x="1707" y="958" width="753" height="688" fill="none" stroke="#ff5a5f" stroke-width="3" stroke-dasharray="18 12"/>
+<text x="2083.5" y="1282" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="92" text-anchor="middle" fill="#9aa4ad">วิธีใช้</text>
+<text x="2083.5" y="1392" font-family="'Sukhumvit Set','Thonburi','Noto Sans Thai',sans-serif" font-size="54" text-anchor="middle" fill="#b8c0c7">833×768 @ (1667,918)</text>
+</svg>

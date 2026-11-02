@@ -9,7 +9,8 @@ const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocati
 const { evRouteState } = require('./state');
 const { normalizeThaiNumbers } = require('../utils/thai-numbers');
 const { extractDatePhrase } = require('../utils/date-phrases');
-const { dispatchOtherIntent } = require('./commands/nl-dispatch');
+const { dispatchOtherIntent, answerForUser } = require('./commands/nl-dispatch');
+const { MENU_QUESTIONS } = require('./commands/menu');
 const { clearAllState, slipConfirmState, datetimePickerState, deleteConfirmState, deleteListState, nlCommandState } = require('./state');
 
 const HELP_TEXT = [
@@ -158,6 +159,13 @@ async function handleTextMessage(text, userContext = {}) {
   }
 
   dropStalePendingFlows(normalized, lineUserId);
+
+  // วลีคำถามสำเร็จรูปจากเมนู "ถามข้อมูล" — ตอบตรงๆ ด้วยโค้ด ไม่เรียกโมเดล (ใช้ได้แม้เครดิต AI หมด)
+  const menuQuestion = MENU_QUESTIONS[normalized.replace(/\s*\?$/, '')];
+  if (menuQuestion) {
+    const answer = await answerForUser(menuQuestion, userContext);
+    if (!answer.error) return { type: 'nl_answer', reply: answer.reply };
+  }
 
   // ผู้ใช้ตอบรับ/ปฏิเสธคำสั่งที่ AI ตีความไว้
   const pendingNl = nlCommandState.pendingByUser[lineUserId];

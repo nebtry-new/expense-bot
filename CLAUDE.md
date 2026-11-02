@@ -32,7 +32,11 @@ expense-bot/
 ├── CLAUDE.md                 ← ไฟล์นี้
 ├── .env / .env.example
 ├── package.json
+├── assets/richmenu/          ← รูป Rich menu: main.png, more.png (ผู้ออกแบบวางเอง 2500×1686 ≤1MB) + guide-*.png (ภาพช่วยวาง)
+├── docs/richmenu-design.md   ← สเปกออกแบบ Rich menu
 ├── scripts/
+│   ├── richmenu.js           ← `npm run richmenu:setup|list|delete` จัดการ Rich menu ผ่าน LINE API
+│   ├── richmenu-guide.js     ← สร้างภาพ guide จาก definitions (ต้องมี rsvg-convert)
 │   ├── golden-runner.js      ← รันประโยคตัวอย่างผ่าน handleTextMessage แล้วตรวจผล
 │   └── eval-nl.js            ← `npm run eval:nl` ประเมินโมเดลจริง (ใช้เครดิต API)
 ├── supabase/                 ← schema.sql + migration_001…009
@@ -44,7 +48,8 @@ expense-bot/
     ├── handlers/
     │   ├── text.js           ← route ข้อความ → command + pipeline บันทึกค่าใช้จ่าย + help
     │   ├── state.js          ← pending state ต่อ user (slip, ev, ลบ, datetime ฯลฯ) — ถูกล้างเมื่อข้อความถัดไปไม่ใช่คำตอบ
-    │   └── commands/         ← expense, slip, settlement, summary, trip, ev, notifications
+    │   └── commands/         ← expense, slip, settlement, summary, trip, ev, notifications, menu (postback จาก Rich menu), nl-dispatch
+    ├── richmenu/definitions.js ← โครงเมนู 2 แท็บ (พิกัด/ปุ่ม/alias) — แก้ปุ่มที่นี่ที่เดียว
     ├── services/
     │   ├── db.js             ← Supabase queries ทั้งหมด (+ in-memory เมื่อ DEVELOPMENT_MODE=true)
     │   ├── claude.js         ← Claude Vision อ่าน slip
@@ -221,6 +226,14 @@ trips (
 - **Phase 3 ✅ แจ้งเตือนแบบพูด**: `src/utils/relative-time.js` (โค้ดล้วน ไม่ใช้โมเดล) อ่าน "พรุ่งนี้บ่ายสาม", "อีก 2 ชั่วโมง", "วันศุกร์หน้า 9 โมงเช้า", "20.30", "สองทุ่มครึ่ง" ใช้ได้กับ `เตือน…` และ `แจ้งเตือน…`; ประโยคที่ไม่ขึ้นต้นด้วยเตือนให้โมเดลส่ง `reminder.when_local` แล้วโค้ดตรวจว่าเป็นอนาคตก่อนตั้ง
 - **Phase 4 ✅ ถามตอบข้อมูล**: โมเดลแปลคำถามเป็น `{kind, period, keywords, payer, trip_name}` (kind: total / balance / recent / trip_total) แล้ว `src/services/queries.js` คำนวณคำตอบจากข้อมูลจริง — ตัวเลขทุกตัวมาจากโค้ด ไม่ใช่โมเดล; ประโยคคำถามที่มีตัวเลข ("ใช้ไป 3 ครั้งไหม") ถูกส่งให้โมเดลก่อน ไม่ตกไปเป็นรายการค่าใช้จ่าย
 - หลักการ: Claude ไม่เขียน DB เอง, parser เดิมเป็นทางหลัก, ล้มเหลวต้องถอยกลับพฤติกรรมเดิม
+
+### Rich menu (LINE) ✅ โค้ดเสร็จ — รอรูปจากผู้ออกแบบ + ติดตั้งต่อ environment
+
+- 2 แท็บ: **หน้าหลัก** (บันทึกค่าใช้จ่าย · สรุปยอด · จ่าย/รับเงิน · ลบรายการ · ทริป · ถามข้อมูล) และ **เพิ่มเติม** (ตั้งแจ้งเตือน · ดูแจ้งเตือน · หาจุดชาร์จ EV · ตั้งค่ารถ · สรุปเดือนนี้ · วิธีใช้) — แถบแท็บอยู่บนสุด สลับด้วย `richmenuswitch` + alias `expense-bot-main/more`
+- ปุ่มเป็น "ทางลัดเข้า flow เดิม": ปุ่มคำสั่งส่งข้อความเดิม (`สรุป`, `ลบรายการ`, `help` …); ปุ่มที่ต้องมีขั้นต่อ (`action=menu_money|trip|ask|ev`) → `handlers/commands/menu.js` ตอบข้อความ + quick reply (ตัวเลือกเป็นข้อความคำสั่งเดิม จึงผ่านขั้นตอนยืนยัน `ใช่` เหมือนเดิม); ปุ่มที่ต้องพิมพ์ต่อใช้ postback `inputOption: openKeyboard` + `fillInText`
+- วลีของปุ่ม "ถามข้อมูล" (`เดือนนี้ใช้ไปเท่าไหร่` ฯลฯ) ตอบตรงด้วย `queries.js` โดยไม่เรียกโมเดล — ใช้ได้แม้เครดิต AI หมด
+- ติดตั้ง: วาง `assets/richmenu/main.png`, `more.png` ตาม `docs/richmenu-design.md` แล้วรัน `npm run richmenu:setup` **แยกทีละ environment** (dev/prod คนละ LINE channel) — `-- --dry-run` ตรวจก่อนได้
+- ต้องทดสอบบนมือถือจริง: ปุ่ม `fillInText` (เปิดคีย์บอร์ดพร้อมข้อความ) และ OA ที่เคยตั้ง Rich menu ผ่าน LINE OA Manager อาจชนกับเมนูจาก API
 
 ### Sprint 3 — Reminders & To-Do (เริ่มบางส่วน)
 

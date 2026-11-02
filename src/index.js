@@ -7,6 +7,7 @@ const { runPendingNotifications, schedulerStatus } = require('./services/notific
 const { analyzeSlip } = require('./services/claude');
 const { slipConfirmState } = require('./handlers/state');
 const { handleLocationForEv } = require('./handlers/commands/ev');
+const { handleMenuPostback } = require('./handlers/commands/menu');
 const { evRouteState, datetimePickerState } = require('./handlers/state');
 const { parseDatetimePickerValue, toLocalDisplay } = require('./utils/parse-date');
 
@@ -194,10 +195,21 @@ app.post('/webhook', async (req, res) => {
           await sendReplyMessage(event, `⏰ เลือก ${toLocalDisplay(scheduledAt)} น. แล้ว\nพิมพ์ข้อความแจ้งเตือน\n(เติม ทั้งคู่ หรือ #ทริป ท้ายเพื่อแจ้งสองคน)`);
         }
       }
+
+      // ปุ่มจาก Rich menu (action=menu_*) → ตอบพร้อม quick reply
+      if (data.startsWith('action=menu_')) {
+        try {
+          const reply = await handleMenuPostback(data, { lineUserId });
+          if (reply) await sendReplyMessage(event, reply);
+        } catch (error) {
+          console.error('MENU_POSTBACK_FAILED', { data, error: error.message });
+          await sendReplyMessage(event, 'เมนูขัดข้องชั่วคราว ลองพิมพ์คำสั่งแทนได้เลย (พิมพ์ help เพื่อดูคู่มือ)');
+        }
+      }
     }
 
     if (event.type === 'follow') {
-      const greetingText = 'ยินดีต้อนรับ! 👋\nบอทนี้ใช้สำหรับบันทึกค่าใช้จ่ายร่วมกัน\n\nเริ่มใช้งาน พิมพ์ว่า ลงทะเบียน (เว้นวรรค) ตามด้วยชื่อ\nเช่น ลงทะเบียน ปิ๊ก\n\nพิมพ์ help เพื่อดูคู่มือการใช้งาน';
+      const greetingText = 'ยินดีต้อนรับ! 👋\nบอทนี้ใช้สำหรับบันทึกค่าใช้จ่ายร่วมกัน\n\nเริ่มใช้งาน พิมพ์ว่า ลงทะเบียน (เว้นวรรค) ตามด้วยชื่อ\nเช่น ลงทะเบียน ปิ๊ก\n\nแตะ "เมนู" ด้านล่างเพื่อเลือกคำสั่ง หรือพิมพ์ help เพื่อดูคู่มือการใช้งาน';
       await sendReplyMessage(event, greetingText);
     }
 
