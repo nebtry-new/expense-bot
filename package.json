@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "test": "node --test",
     "db:schema": "cat supabase/schema.sql",
-    "db:check": "node -e \"const { getDbStatus } = require('./src/services/db'); console.log(JSON.stringify(getDbStatus(), null, 2));\""
+    "db:check": "node -e \"const { getDbStatus } = require('./src/services/db'); console.log(JSON.stringify(getDbStatus(), null, 2));\"",
+    "eval:nl": "node scripts/eval-nl.js"
   },
   "keywords": [
     "line",

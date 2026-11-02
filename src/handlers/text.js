@@ -1,12 +1,14 @@
 const { registerUser, getUsers, resetData, terminateUserByName, restoreUserByName, renameUserByLineId, resetState } = require('../services/db');
 const { handleSummary, handleMonthlySummary } = require('./commands/summary');
 const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('./commands/settlement');
-const { handleNaturalLanguageExpense, handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense } = require('./commands/expense');
+const { handleListUnrecognized, handleNaturalLanguageExpense, handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
 const { handleCreateTrip, handleListTrips, handleTripSummary, handleSetTripBillable, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
 const { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification } = require('./commands/notifications');
 const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
+const { normalizeThaiNumbers } = require('../utils/thai-numbers');
+const { extractDatePhrase } = require('../utils/date-phrases');
 const { clearAllState, slipConfirmState, datetimePickerState, deleteConfirmState, deleteListState } = require('./state');
 
 const HELP_TEXT = [
@@ -18,7 +20,9 @@ const HELP_TEXT = [
   '• ระบุจำนวนเอง: ค่าโรงแรม 1200 ฉัน 400 แฟน 800',
   '• หารตามจำนวนคน: ค่าทัวร์ 3000 หาร 3 คน',
   '• หลายรายการ: พิมพ์ขึ้นบรรทัดใหม่ทีละรายการ',
-  '• พิมพ์เป็นประโยคธรรมดาก็ได้: เลี้ยงข้าวแฟน 450 / แฟนออกค่าที่พัก 1200',
+  '• พิมพ์เป็นประโยคธรรมดาก็ได้: เลี้ยงข้าวแฟน 450 / ปิ๊กยืมแจม 500 / คืนแจม 500',
+  '• ใส่วันย้อนหลังได้: เมื่อวานกินข้าว 100 / 3 วันก่อน ค่าน้ำมัน 500',
+  '• หลายรายการในประโยคเดียว: ข้าว 100 กาแฟ 50',,
   '• ส่งรูป slip: บอทอ่านยอดให้ แล้วตอบ ใช่ / ไม่หาร / หาร 3 / ยกเลิก',
   '',
   '━━ 📊 สรุปยอด & เคลียร์เงิน ━━',
@@ -69,6 +73,7 @@ const HELP_TEXT = [
   '• ดูรายชื่อ: ผู้ใช้',
   '• ลงทะเบียน: ลงทะเบียน (ชื่อ)',
   '• เปลี่ยนชื่อ: เปลี่ยนชื่อ (ชื่อใหม่)',
+  '• ดูข้อความที่บอตไม่เข้าใจ: ข้อความที่ไม่เข้าใจ',
   '• ล้างข้อมูลทั้งหมด: reset-all → reset-confirm',
   '',
   'หมายเหตุ: รองรับผู้ใช้ได้สูงสุด 2 คนเท่านั้น',
@@ -78,10 +83,10 @@ const YES_RE = /^(ใช่|yes|ok|เรียกเก็บเงิน)$/i;
 const CANCEL_RE = /^(ยกเลิก|cancel|ไม่เอา)$/i;
 const MAPS_URL_RE = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/;
 // Commands that never belong to a free-text flow (datetime picker reply)
-const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
+const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+|ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
 
 // ประโยคที่บอกว่าใครจ่าย/เลี้ยงใคร parser เดิมอ่านไม่ออก (มันเห็นแค่ "ชื่อ + ตัวเลข") → ให้ Claude ตีความก่อน
-const NL_CUE_RE = /(ออกให้|เลี้ยง|จ่ายแทน|แฟนออก|แฟนจ่าย|ออกค่า|จ่ายให้|โอนให้|ยืม|ทด(?:ให้|ไว้|ก่อน)|สำรอง|ฝากจ่าย|ฝากซื้อ|ต้องคืน|ขอคืน)/;
+const NL_CUE_RE = /(ออกให้|เลี้ยง|จ่ายแทน|แฟนออก|แฟนจ่าย|ออกค่า|จ่ายให้|โอนให้|ยืม|คืน|ทด(?:ให้|ไว้|ก่อน)|สำรอง|ฝากจ่าย|ฝากซื้อ|ต้องคืน|ขอคืน)/;
 
 function isSlipReply(text) {
   return YES_RE.test(text)
@@ -217,6 +222,10 @@ async function handleTextMessage(text, userContext = {}) {
     return handleDeleteLastExpense(userContext);
   }
 
+  if (/^(ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ)$/i.test(normalized)) {
+    return handleListUnrecognized();
+  }
+
   const deleteListMatch = normalized.match(/^ลบรายการ(?:\s+(.+))?$/i);
   if (deleteListMatch) {
     return handleListDeletableExpenses(deleteListMatch[1], userContext);
@@ -343,22 +352,30 @@ async function handleTextMessage(text, userContext = {}) {
     if (override) return override;
   }
 
-  const inputLines = normalized.split('\n').map((l) => l.trim()).filter(Boolean);
-  if (inputLines.length === 1 && NL_CUE_RE.test(normalized)) {
-    const cued = await handleNaturalLanguageExpense(normalized, userContext);
+  // ขั้นตอนเตรียมข้อความบันทึกค่าใช้จ่าย: เลขไทย ("สามร้อย" → 300) และวลีวันที่ ("เมื่อวาน" → ย้อนหลัง)
+  const numbered = normalizeThaiNumbers(normalized);
+  const { text: expenseText, createdAt } = extractDatePhrase(numbered);
+  const expenseContext = createdAt ? { ...userContext, createdAt } : userContext;
+
+  const inputLines = expenseText.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (inputLines.length === 1 && NL_CUE_RE.test(expenseText)) {
+    const cued = await handleNaturalLanguageExpense(expenseText, expenseContext);
     if (cued) return cued;
     // ยืมเงินแต่ตีความไม่ได้ → อย่าให้ parser เดิมบันทึกเป็นหารครึ่งแบบเงียบๆ
-    if (/ยืม/.test(normalized)) {
+    if (/ยืม/.test(expenseText)) {
       return { type: 'error', reply: 'ไม่แน่ใจว่าใครยืมใคร กรุณาพิมพ์ เช่น ปิ๊กยืมแจม 500 (คนยืม + ยืม + คนให้ยืม + ยอด)' };
     }
   }
 
-  const result = await handleExpenseLines(inputLines, userContext);
+  const result = await handleExpenseLines(inputLines, expenseContext);
   if (result.type !== 'noop') return result;
 
   // parser เดิมหาจำนวนเงินไม่เจอ → ลองให้ Claude ตีความข้อความภาษาธรรมชาติ
-  const nlResult = await handleNaturalLanguageExpense(normalized, userContext);
-  return nlResult || result;
+  const nlResult = await handleNaturalLanguageExpense(expenseText, expenseContext);
+  if (!nlResult) return result;
+  // ข้อความที่ไม่มีตัวเลข (ทักทาย/คุยเล่น) ไม่ต้องรายงานว่า AI ล้ม — ตอบเงียบๆ แบบเดิม
+  if (nlResult.type === 'error' && !/\d/.test(expenseText)) return result;
+  return nlResult;
 }
 
 module.exports = { handleTextMessage };

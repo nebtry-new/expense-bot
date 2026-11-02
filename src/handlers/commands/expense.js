@@ -1,9 +1,38 @@
 const { parseExpenseText, formatSplitMode } = require('../../utils/parser');
-const { addExpense, getUsers, getExpenses, getTrips, findLastExpense, findTripByName } = require('../../services/db');
+const { addExpense, logUnrecognizedMessage, getUsers, getExpenses, getTrips, listUnrecognizedMessages, findLastExpense, findTripByName } = require('../../services/db');
 const { interpretExpenseMessage } = require('../../services/nl-intent');
 const { deleteConfirmState, deleteListState } = require('../state');
 
-async function handleExpenseLines(inputLines, userContext) {
+const MONTH_LABELS = ['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const UNIT_WORDS = /^(ใบ|คน|ชิ้น|อัน|ที่|ชม|ชั่วโมง|กม|วัน|คืน|แก้ว|จาน|ห้อง|ครั้ง|เดือน|ปี|นาที)/;
+const INLINE_BLOCKERS = /(#|ฉัน|แฟน|หาร|ส่วนตัว|ไม่หาร|ยืม|คืน|ออกให้|เลี้ยง|จ่ายแทน|\/)/;
+
+// "ข้าว 100 กาแฟ 50" → ["ข้าว 100", "กาแฟ 50"] (ไม่งั้นจะบันทึกแค่ข้าวแล้วทิ้งกาแฟเงียบๆ)
+// คืน null ถ้าไม่ใช่รูปแบบ "ชื่อ ตัวเลข" ซ้ำกันตลอดทั้งประโยค
+function splitInlineItems(line, userNames = {}) {
+  if (INLINE_BLOCKERS.test(line)) return null;
+  if ([userNames.senderName, userNames.partnerName].filter(Boolean).some((n) => line.includes(n))) return null;
+
+  const SEG = /\s*([^\d,+]+?)\s*(\d+(?:\.\d+)?)\s*(?:บาท)?\s*(?:และ|กับ|แล้วก็|แล้ว|,|\+)?/y;
+  const items = [];
+  SEG.lastIndex = 0;
+  let m;
+  while (SEG.lastIndex < line.length && (m = SEG.exec(line))) {
+    const description = m[1].trim();
+    if (description.length < 2 || UNIT_WORDS.test(description)) return null;
+    items.push(`${description} ${m[2]}`);
+  }
+  return items.length >= 2 && SEG.lastIndex >= line.trim().length ? items : null;
+}
+
+// " 📅 1 พ.ย." เมื่อบันทึกย้อนหลัง
+function backdateNote(userContext) {
+  if (!userContext.createdAt) return '';
+  const local = new Date(new Date(userContext.createdAt).getTime() + 7 * 60 * 60 * 1000);
+  return ` 📅 ${local.getUTCDate()} ${MONTH_LABELS[local.getUTCMonth() + 1]}`;
+}
+
+async function handleExpenseLines(rawLines, userContext) {
   const lineUserId = userContext.lineUserId || 'unknown';
   const allUsers = await getUsers();
   const sender = allUsers.find((u) => u.lineUserId === lineUserId) || null;
@@ -13,6 +42,8 @@ async function handleExpenseLines(inputLines, userContext) {
     senderName: sender?.displayName || null,
     partnerName: partner?.displayName || null,
   };
+
+  const inputLines = rawLines.length === 1 ? (splitInlineItems(rawLines[0], userNames) || rawLines) : rawLines;
 
   // Validate only — no DB writes. Returns { parsed, customAmounts, tripId } | { type: 'error' } | null
   const validateLine = async (line) => {
@@ -78,6 +109,7 @@ async function handleExpenseLines(inputLines, userContext) {
       numPeople: parsed.numPeople,
       customAmounts,
       tripId,
+      ...(userContext.createdAt ? { createdAt: userContext.createdAt } : {}),
     });
     return { parsed, saved };
   };
@@ -109,7 +141,7 @@ async function handleExpenseLines(inputLines, userContext) {
     return {
       type: 'expense_batch',
       results,
-      reply: [`บันทึก ${results.length} รายการแล้ว:`, ...itemLines, `รวม: ${total.toLocaleString()} บาท`].join('\n'),
+      reply: [`บันทึก ${results.length} รายการแล้ว${backdateNote(userContext)}:`, ...itemLines, `รวม: ${total.toLocaleString()} บาท`].join('\n'),
     };
   }
 
@@ -126,7 +158,7 @@ async function handleExpenseLines(inputLines, userContext) {
     type: 'expense',
     parsed: result.parsed,
     saved: result.saved,
-    reply: `บันทึกค่าใช้จ่ายแล้ว: ${result.parsed.description} ${result.parsed.amount.toLocaleString()} บาท (${formatSplitMode(result.parsed.splitMode, result.parsed.numPeople)})`,
+    reply: `บันทึกค่าใช้จ่ายแล้ว${backdateNote(userContext)}: ${result.parsed.description} ${result.parsed.amount.toLocaleString()} บาท (${formatSplitMode(result.parsed.splitMode, result.parsed.numPeople)})`,
   };
 }
 
@@ -178,6 +210,10 @@ async function handleNaturalLanguageExpense(text, userContext) {
   }, lineUserId);
 
   if (!interpreted.ok) {
+    // เก็บเฉพาะข้อความที่ดูเหมือนพยายามบันทึกเงิน (มีตัวเลขหรือคำบอกการจ่าย/ยืม) ไม่เก็บคำทักทาย
+    if (/\d|ยืม|คืน|เลี้ยง|ออกให้|จ่าย/.test(text)) {
+      await logUnrecognizedMessage({ lineUserId, text, reason: interpreted.reason });
+    }
     const reply = NL_FAIL_REPLIES[interpreted.reason];
     return reply ? { type: 'error', reply } : null;
   }
@@ -222,12 +258,16 @@ async function handleNaturalLanguageExpense(text, userContext) {
       numPeople,
       customAmounts,
       tripId,
+      ...(userContext.createdAt ? { createdAt: userContext.createdAt } : {}),
     });
     const payerNote = payerUser.id === sender.id ? '' : ` — ${payerUser.displayName} จ่าย`;
     lines.push(`• ${item.description} ${item.amount.toLocaleString()} บาท (${formatSplitMode(split, numPeople)})${payerNote}`);
 
     // custom ที่อีกฝ่ายรับเต็มจำนวน → บอกชัดๆ ว่าใครต้องคืนใคร จะได้เห็นถ้าตีความทิศทางผิด
-    if (split === 'custom') {
+    if (item.kind === 'repayment') {
+      const receiver = payerUser.id === sender.id ? partner : sender;
+      lines.push(`  → ${payerUser.displayName} คืนเงินให้ ${receiver.displayName} (หักจากยอดค้าง)`);
+    } else if (split === 'custom') {
       const other = payerUser.id === sender.id ? partner : sender;
       const otherShare = customAmounts[String(other.id)];
       if (Math.abs(otherShare - item.amount) < 0.01) {
@@ -239,7 +279,7 @@ async function handleNaturalLanguageExpense(text, userContext) {
   return {
     type: 'expense_nl',
     reply: [
-      `บันทึกแล้ว (ตีความจากข้อความ ${prepared.length} รายการ):`,
+      `บันทึกแล้ว${backdateNote(userContext)} (ตีความจากข้อความ ${prepared.length} รายการ):`,
       ...lines,
       '',
       'ถ้าไม่ถูก พิมพ์ ลบรายการ เพื่อเลือกลบ',
@@ -251,6 +291,19 @@ const DELETE_LIST_LIMIT = 15;
 
 // แสดงรายการที่ยังไม่เคลียร์ของทั้งสองคน (รวมรายการในทริป) โดยกำกับชื่อคนจ่ายถ้าไม่ใช่ของตัวเอง ให้เลือกลบด้วยเลข
 // keyword (optional) กรองจากชื่อรายการหรือชื่อทริป
+async function handleListUnrecognized() {
+  const [rows, users] = await Promise.all([listUnrecognizedMessages(10), getUsers()]);
+  if (!rows.length) return { type: 'unrecognized', reply: 'ยังไม่มีข้อความที่บอตไม่เข้าใจ 🎉' };
+
+  const nameByLine = Object.fromEntries(users.map((u) => [u.lineUserId, u.displayName]));
+  const lines = rows.map((r, i) => {
+    const local = new Date(new Date(r.created_at).getTime() + 7 * 60 * 60 * 1000);
+    const when = `${local.getUTCDate()} ${MONTH_LABELS[local.getUTCMonth() + 1]} ${String(local.getUTCHours()).padStart(2, '0')}:${String(local.getUTCMinutes()).padStart(2, '0')}`;
+    return `${i + 1}. [${when}] ${nameByLine[r.line_user_id] || '?'}: ${r.text}\n   เหตุผล: ${r.reason || '-'}`;
+  });
+  return { type: 'unrecognized', reply: ['ข้อความที่บอตไม่เข้าใจ (ล่าสุด 10 รายการ):', ...lines].join('\n') };
+}
+
 async function handleListDeletableExpenses(keyword, userContext) {
   const lineUserId = userContext.lineUserId || 'unknown';
   const allUsers = await getUsers();
@@ -320,4 +373,4 @@ function handlePickDeleteExpense(index, userContext) {
   };
 }
 
-module.exports = { handleNaturalLanguageExpense, handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense };
+module.exports = { handleListUnrecognized, handleNaturalLanguageExpense, handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense };

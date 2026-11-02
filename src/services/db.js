@@ -43,6 +43,7 @@ async function resetData() {
   trips.length = 0;
   tripPlaces.length = 0;
   carProfile = null;
+  global._unrecognized = [];
   resetState.pendingReset = false;
 }
 
@@ -269,7 +270,7 @@ async function addExpense(expense) {
       is_cleared: false,
       slip_url: expense.slipUrl || null,
       trip_id: expense.tripId || null,
-      created_at: new Date().toISOString(),
+      created_at: expense.createdAt ? new Date(expense.createdAt).toISOString() : new Date().toISOString(),
     };
 
     const { data, error } = await supabase.from('expenses').insert(payload).select();
@@ -296,6 +297,7 @@ async function addExpense(expense) {
     ...expense,
     paidByUserId: expense.paidByUserId,
     paidByDisplayName: expense.paidByDisplayName,
+    createdAt: expense.createdAt ? new Date(expense.createdAt).toISOString() : new Date().toISOString(),
   };
 
   expenses.push(nextExpense);
@@ -639,6 +641,34 @@ async function getExpensesByTrip(tripId) {
   return expenses.filter((e) => e.tripId === tripId);
 }
 
+// บันทึกข้อความที่ตีความไม่ได้ — best effort: ล้มเหลวแล้วต้องไม่กระทบการตอบผู้ใช้
+async function logUnrecognizedMessage({ lineUserId = null, text, reason = null }) {
+  try {
+    if (supabase) {
+      const { error } = await supabase.from('unrecognized_messages').insert({ line_user_id: lineUserId, text, reason });
+      if (error) throw error;
+      return;
+    }
+    if (!global._unrecognized) global._unrecognized = [];
+    global._unrecognized.push({ line_user_id: lineUserId, text, reason, created_at: new Date().toISOString() });
+  } catch (err) {
+    console.error('LOG_UNRECOGNIZED_FAILED', err?.message || err);
+  }
+}
+
+async function listUnrecognizedMessages(limit = 10) {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('unrecognized_messages')
+      .select('line_user_id, text, reason, created_at')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return data || [];
+  }
+  return [...(global._unrecognized || [])].reverse().slice(0, limit);
+}
+
 async function scheduleNotification({ type = 'manual', message, scheduledAt, lineUserId = null }) {
   if (supabase) {
     const { data, error } = await supabase
@@ -750,6 +780,8 @@ module.exports = {
   getTripNotes,
   getCarProfile,
   setCarProfile,
+  logUnrecognizedMessage,
+  listUnrecognizedMessages,
   scheduleNotification,
   getPendingNotifications,
   markNotificationSent,

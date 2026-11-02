@@ -167,38 +167,95 @@ function detectBorrower(text, { senderName, partnerName } = {}) {
   return null;
 }
 
-// ประโยคยืมเงินที่ทิศทางและยอดชัดเจน → สร้างรายการด้วยโค้ดเลย ไม่ต้องรอโมเดล (เร็ว เสถียร ไม่ผิดทิศ)
-// คืน null ถ้ามีหลายตัวเลข / มี #ทริป / อ่านยอดไม่ได้ → ให้โมเดลช่วย
-function parseLoanMessage(text, { senderName, partnerName } = {}) {
-  const t = String(text || '').trim();
-  if (!/ยืม/.test(t) || /#/.test(t)) return null;
-
-  const tokens = [...t.replace(/(\d),(?=\d{3}\b)/g, '$1').matchAll(/(\d+(?:\.\d+)?)\s*(k|K|พัน|ร้อย|หมื่น|แสน)?(?:\s*บาท)?/g)];
+// ตัวเลขเดียวในข้อความ (รองรับ 1,200 / 1.5k / 2 พัน) → { amount, full } | null
+function singleAmount(text) {
+  const tokens = [...String(text).replace(/(\d),(?=\d{3}\b)/g, '$1').matchAll(/(\d+(?:\.\d+)?)\s*(k|K|พัน|ร้อย|หมื่น|แสน)?(?:\s*บาท)?/g)];
   if (tokens.length !== 1) return null;
-
   const [full, num, unit] = tokens[0];
   const multiplier = { k: 1000, K: 1000, พัน: 1000, ร้อย: 100, หมื่น: 10000, แสน: 100000 }[unit] || 1;
   const amount = Math.round(Number(num) * multiplier * 100) / 100;
-  if (!(amount > 0)) return null;
+  return amount > 0 ? { amount, full } : null;
+}
 
-  // ไม่ระบุว่าใครยืม ("ยืม 500", "ยืมเงิน 500 ไปซื้อของ") → ผู้ส่งเป็นผู้ยืมจากแฟน
-  const borrower = detectBorrower(t, { senderName, partnerName }) || 'me';
-
+// ข้อความที่เหลือหลังตัดยอด ชื่อ และคำกริยาออก = วัตถุประสงค์ ("ไปทำบุญ")
+function purposeText(text, full, { senderName, partnerName }, verbRe) {
   const noise = [senderName, partnerName, ...ME_ALIASES, ...PARTNER_ALIASES].filter(Boolean).map(escapeRe);
-  const rest = t.replace(full, ' ')
+  return text.replace(full, ' ')
     .replace(new RegExp(noise.join('|'), 'g'), ' ')
-    .replace(/ให้|ขอ|ตัง|เงิน|ยืม|บาท/g, ' ')
+    .replace(verbRe, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function joinDescription(base, rest) {
+  return rest ? `${base}${rest.startsWith('ไป') ? '' : ' '}${rest}` : base;
+}
+
+// ประโยคยืมเงินที่ทิศทางและยอดชัดเจน → สร้างรายการด้วยโค้ดเลย ไม่ต้องรอโมเดล (เร็ว เสถียร ไม่ผิดทิศ)
+// คืน null ถ้ามีหลายตัวเลข / มี #ทริป / อ่านยอดไม่ได้ → ให้โมเดลช่วย
+function parseLoanMessage(text, names = {}) {
+  const t = String(text || '').trim();
+  if (!/ยืม/.test(t) || /#/.test(t)) return null;
+
+  const found = singleAmount(t);
+  if (!found) return null;
+  const { amount, full } = found;
+
+  // ไม่ระบุว่าใครยืม ("ยืม 500", "ยืมเงิน 500 ไปซื้อของ") → ผู้ส่งเป็นผู้ยืมจากแฟน
+  const borrower = detectBorrower(t, names) || 'me';
+  const rest = purposeText(t, full, names, /ให้|ขอ|ตัง|เงิน|ยืม|บาท/g);
 
   return {
-    description: rest ? `ยืมเงิน${rest.startsWith('ไป') ? '' : ' '}${rest}` : 'ยืมเงิน',
+    description: joinDescription('ยืมเงิน', rest),
     amount,
     payer: borrower === 'me' ? 'partner' : 'me',
     split: 'custom',
     numPeople: null,
     myShare: borrower === 'me' ? amount : 0,
     partnerShare: borrower === 'me' ? 0 : amount,
+    tripName: null,
+  };
+}
+
+// ใครเป็นผู้คืนเงิน: 'me' | 'partner' | null  ("คืนแจม 500", "แจมโอนคืนแล้ว 500", "ปิ๊กคืนแจม")
+function detectRepayer(text, { senderName, partnerName } = {}) {
+  if (/(ต้อง|ขอ|ให้|ทวง)คืน/.test(text)) return null; // เป็นการทวง ไม่ใช่การคืน
+  const meNames = [...(senderName ? [senderName] : []), ...ME_ALIASES].map(escapeRe);
+  const partnerNames = [...(partnerName ? [partnerName] : []), ...PARTNER_ALIASES].map(escapeRe);
+  const ME = `(?:${meNames.join('|')})`;
+  const PARTNER = `(?:${partnerNames.join('|')})`;
+  const R = '(?:โอน|จ่าย)?คืน(?:เงิน|ตัง|แล้ว)*';
+  const test = (re) => re.test(text);
+
+  if (test(new RegExp(`${ME}\\s*${R}\\s*${PARTNER}`))) return 'me';
+  if (test(new RegExp(`${PARTNER}\\s*${R}\\s*${ME}`))) return 'partner';
+  if (test(new RegExp(`${PARTNER}\\s*${R}`))) return 'partner';
+  if (test(new RegExp(`${ME}\\s*${R}`))) return 'me';
+  if (test(new RegExp(`${R}\\s*${PARTNER}`))) return 'me';
+  if (new RegExp(R).test(text)) return 'me'; // "คืนเงิน 500" เฉยๆ → ผู้ส่งคืนแฟน
+  return null;
+}
+
+// การคืนเงิน = ผู้คืนเป็นฝ่ายจ่าย อีกฝ่ายรับเต็มจำนวน (หักล้างหนี้เดิมใน balance)
+function parseRepaymentMessage(text, names = {}) {
+  const t = String(text || '').trim();
+  if (/ยืม/.test(t) || /#/.test(t) || !/คืน/.test(t)) return null;
+
+  const found = singleAmount(t);
+  if (!found) return null;
+  const repayer = detectRepayer(t, names);
+  if (!repayer) return null;
+
+  const rest = purposeText(t, found.full, names, /โอน|จ่าย|คืน|แล้ว|ตัง|เงิน|บาท/g);
+  return {
+    kind: 'repayment',
+    description: joinDescription('คืนเงิน', rest),
+    amount: found.amount,
+    payer: repayer,
+    split: 'custom',
+    numPeople: null,
+    myShare: repayer === 'me' ? 0 : found.amount,
+    partnerShare: repayer === 'me' ? found.amount : 0,
     tripName: null,
   };
 }
@@ -281,8 +338,8 @@ async function interpretExpenseMessage(text, context, userId = 'unknown') {
   const trimmed = String(text || '').trim();
   if (!trimmed || trimmed.length > MAX_TEXT_LENGTH) return { ok: false, reason: 'bad_length' };
 
-  const loan = parseLoanMessage(trimmed, context);
-  if (loan) return { ok: true, expenses: [loan] };
+  const direct = parseLoanMessage(trimmed, context) || parseRepaymentMessage(trimmed, context);
+  if (direct) return { ok: true, expenses: [direct] };
 
   if (!isAvailable()) return { ok: false, reason: 'not_configured' };
   if (!allowCall(userId)) return { ok: false, reason: 'rate_limited' };
@@ -301,4 +358,4 @@ async function interpretExpenseMessage(text, context, userId = 'unknown') {
   }
 }
 
-module.exports = { interpretExpenseMessage, validateInterpretation, detectBorrower, parseLoanMessage, numbersInText, __setInterpreter, __resetRateLimit };
+module.exports = { interpretExpenseMessage, validateInterpretation, detectBorrower, detectRepayer, parseLoanMessage, parseRepaymentMessage, numbersInText, __setInterpreter, __resetRateLimit };

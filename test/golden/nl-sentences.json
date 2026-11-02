@@ -1,0 +1,42 @@
+[
+  { "text": "ค่าข้าว 350", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 350, "split": "half" }] } },
+  { "text": "ค่าข้าว 600 ฉัน 200 แฟน 400", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 600, "split": "custom", "shares": { "ปิ๊ก": 200, "แจม": 400 } }] } },
+  { "text": "ค่ากาแฟ 80 ส่วนตัว", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 80, "split": "none" }] } },
+  { "text": "ค่าทัวร์ 3000 หาร 3 คน", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 3000, "split": "per_head" }] } },
+
+  { "name": "ยืม: A ยืม B", "text": "ปิ๊กยืมแจม 500 ไปทำบุญ", "expect": { "expenses": [{ "payer": "แจม", "amount": 500, "split": "custom", "shares": { "ปิ๊ก": 500, "แจม": 0 }, "descriptionIncludes": "ทำบุญ" }] } },
+  { "name": "ยืม: B ให้ยืม", "text": "แจมให้ยืม 500", "expect": { "expenses": [{ "payer": "แจม", "amount": 500, "split": "custom", "shares": { "ปิ๊ก": 500, "แจม": 0 } }] } },
+  { "name": "ยืม: ผู้ส่งยืม", "text": "ปิ๊กยืม 500", "expect": { "expenses": [{ "payer": "แจม", "amount": 500, "split": "custom", "shares": { "ปิ๊ก": 500, "แจม": 0 } }] } },
+  { "name": "ยืม: แฟนยืม", "text": "แจมยืม 500", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 500, "split": "custom", "shares": { "ปิ๊ก": 0, "แจม": 500 } }] } },
+  { "name": "ยืม: ผู้ส่งเป็นแจม", "from": "แจม", "text": "ปิ๊กยืม 500", "expect": { "expenses": [{ "payer": "แจม", "amount": 500, "split": "custom", "shares": { "ปิ๊ก": 500, "แจม": 0 } }] } },
+  { "name": "ยืม: ไม่ระบุคน", "text": "ยืม 500", "expect": { "expenses": [{ "payer": "แจม", "amount": 500, "split": "custom", "shares": { "ปิ๊ก": 500, "แจม": 0 } }] } },
+  { "name": "ยืม: ตัวเลขเป็นคำ", "text": "ยืมแจมสามร้อย", "expect": { "expenses": [{ "payer": "แจม", "amount": 300, "split": "custom", "shares": { "ปิ๊ก": 300, "แจม": 0 } }] } },
+  { "name": "ยืม: 1.5k", "text": "ยืมเงิน 1.5k", "expect": { "expenses": [{ "payer": "แจม", "amount": 1500, "split": "custom" }] } },
+  { "name": "ยืม: พันนึง", "text": "ปิ๊กยืมแจมพันนึง", "expect": { "expenses": [{ "payer": "แจม", "amount": 1000, "split": "custom" }] } },
+
+  { "name": "คืนเงิน: ผู้ส่งคืนแฟน", "text": "คืนแจม 500", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 500, "split": "custom", "shares": { "ปิ๊ก": 0, "แจม": 500 } }] } },
+  { "name": "คืนเงิน: แฟนโอนคืน", "text": "แจมโอนคืนแล้ว 500", "expect": { "expenses": [{ "payer": "แจม", "amount": 500, "split": "custom", "shares": { "ปิ๊ก": 500, "แจม": 0 } }] } },
+  { "name": "คืนเงิน: ระบุทั้งสองชื่อ", "text": "ปิ๊กคืนแจม 300", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 300, "split": "custom", "shares": { "ปิ๊ก": 0, "แจม": 300 } }] } },
+  { "name": "คืนเงิน: ไม่ระบุคน", "text": "โอนคืนแล้ว 400", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 400, "split": "custom" }] } },
+  { "name": "ทวงเงิน ไม่ใช่การคืน → ต้องให้โมเดล (ไม่มีโมเดล = ไม่บันทึก)", "text": "แจมต้องคืน 500", "expect": { "none": true } },
+
+  { "name": "เลขไทย", "text": "ค่าข้าวสามร้อย", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 300, "split": "half" }] } },
+  { "name": "เลขไทย: สองพันห้า", "text": "ค่าห้องสองพันห้า", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 2500, "split": "half" }] } },
+  { "name": "เลขไทย: ห้าสิบบาท", "text": "ค่าน้ำห้าสิบบาท", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 50, "split": "half" }] } },
+
+  { "name": "หลายรายการในประโยคเดียว", "text": "ข้าว 100 กาแฟ 50", "expect": { "expenses": [{ "amount": 100, "split": "half" }, { "amount": 50, "split": "half" }] } },
+  { "name": "หลายรายการ + บาท/และ", "text": "ข้าว 100 บาท และ กาแฟ 50 บาท", "expect": { "expenses": [{ "amount": 100 }, { "amount": 50 }] } },
+
+  { "name": "ย้อนหลัง: เมื่อวาน", "text": "เมื่อวานกินข้าว 100", "expect": { "expenses": [{ "amount": 100, "split": "half", "daysAgo": 1, "descriptionIncludes": "กินข้าว" }] } },
+  { "name": "ย้อนหลัง: เมื่อวานซืน", "text": "ค่าน้ำมัน 500 เมื่อวานซืน", "expect": { "expenses": [{ "amount": 500, "daysAgo": 2 }] } },
+  { "name": "ย้อนหลัง: N วันก่อน", "text": "3 วันก่อน ค่าข้าว 100", "expect": { "expenses": [{ "amount": 100, "daysAgo": 3 }] } },
+  { "name": "ย้อนหลัง + ยืม", "text": "เมื่อวานยืมแจม 200", "expect": { "expenses": [{ "payer": "แจม", "amount": 200, "split": "custom", "daysAgo": 1 }] } },
+
+  { "name": "ทักทาย ไม่บันทึกอะไร", "text": "สวัสดี", "expect": { "none": true } },
+
+  { "name": "ต้องใช้โมเดล: เลี้ยงแฟน + เมื่อวาน", "needsModel": true, "text": "เมื่อวานเลี้ยงข้าวแฟน 450", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 450, "split": "custom", "shares": { "ปิ๊ก": 0, "แจม": 450 }, "daysAgo": 1 }] } },
+  { "name": "ต้องใช้โมเดล: แฟนออกค่าที่พัก", "needsModel": true, "text": "แฟนออกค่าที่พัก 1200", "expect": { "expenses": [{ "payer": "แจม", "amount": 1200, "split": "half" }] } },
+  { "name": "ต้องใช้โมเดล: ซื้อให้แฟนไม่ต้องหาร", "needsModel": true, "text": "ซื้อของให้แฟน 500 ไม่ต้องหาร", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 500, "split": "none" }] } },
+  { "name": "ต้องใช้โมเดล: สัดส่วน 2:1", "needsModel": true, "text": "ค่าข้าว 600 ฉัน 2 ส่วน แฟน 1 ส่วน", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 600, "split": "custom", "shares": { "ปิ๊ก": 400, "แจม": 200 } }] } },
+  { "name": "ต้องใช้โมเดล: ทวงเงิน", "needsModel": true, "text": "แจมต้องคืน 500", "expect": { "expenses": [{ "payer": "ปิ๊ก", "amount": 500, "split": "custom", "shares": { "ปิ๊ก": 0, "แจม": 500 } }] } }
+]
