@@ -76,7 +76,7 @@ test('custom shares that do not add up are rejected', () => {
   assert.equal(res.reason, 'custom_sum_mismatch');
 });
 
-test('unknown intent / low confidence / API error fall back to the old noop reply', async () => {
+test('unknown intent / low confidence → old noop reply; API error → explicit retry message', async () => {
   await setup();
 
   stub({ intent: 'unknown', confidence: 1, expenses: [] });
@@ -86,7 +86,9 @@ test('unknown intent / low confidence / API error fall back to the old noop repl
   assert.equal((await handleTextMessage('กินข้าวห้าบาท', u1)).type, 'noop');
 
   __setInterpreter(async () => { throw new Error('boom'); });
-  assert.equal((await handleTextMessage('เลี้ยงข้าวแฟน สี่ร้อย', u1)).type, 'noop');
+  const apiDown = await handleTextMessage('เลี้ยงข้าวแฟน สี่ร้อย', u1);
+  assert.equal(apiDown.type, 'error'); // tell the user, don't silently drop or mis-save
+  assert.ok(apiDown.reply.includes('ลองใหม่'));
 
   assert.equal((await getExpenses()).length, 0);
 });
@@ -205,4 +207,21 @@ test('loan messages are saved without calling the model, and never fall back to 
   const r2 = await handleTextMessage('ยืมกับเงินเก่า 200 และ 300', u1);
   assert.equal(r2.type, 'error');
   assert.equal((await getExpenses()).length, 1);
+});
+
+test('Anthropic credit exhausted → clear error, nothing saved as half-split', async () => {
+  await setup();
+  __setInterpreter(async () => {
+    const e = new Error('400');
+    e.error = { error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } };
+    throw e;
+  });
+
+  const r = await handleTextMessage('เลี้ยงข้าวแฟน 450', u1); // cue word, old parser would save half-split
+  assert.equal(r.type, 'error');
+  assert.ok(r.reply.includes('เครดิต'), r.reply);
+  assert.equal((await getExpenses()).length, 0);
+
+  // plain expenses (old parser) keep working with no AI
+  assert.equal((await handleTextMessage('ค่าอาหาร 350', u1)).type, 'expense');
 });

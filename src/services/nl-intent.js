@@ -294,6 +294,9 @@ async function interpretExpenseMessage(text, context, userId = 'unknown') {
     return { ok: true, expenses: applyLoanDirection(validated.expenses, trimmed, context) };
   } catch (err) {
     console.error('NL_INTERPRET_FAILED', err?.message || err);
+    const body = err?.error?.error || err?.error || {};
+    const message = String(body.message || err?.message || '');
+    if (/credit balance/i.test(message)) return { ok: false, reason: 'credit_exhausted' };
     return { ok: false, reason: 'api_error' };
   }
 }
