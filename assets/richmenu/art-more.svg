@@ -10,25 +10,25 @@
 <g transform="translate(416.5 434) scale(1.3)"><path d="M0 -76c-40 0-60 28-60 62v34l-16 22h152l-16-22v-34c0-34-20-62-60-62z" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11" stroke-linejoin="round"/>
     <path d="M-20 62a20 20 0 0 0 40 0" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
     <circle cx="0" cy="-84" r="9" fill="#3FA882"/></g>
-<text x="416.5" y="768" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">ตั้งแจ้งเตือน</text>
+<text x="416.5" y="768" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">แจ้งเตือน</text>
 <rect x="859" y="176" width="782" height="716" rx="56" fill="#FFFDF7" stroke="#8FD3B6" stroke-width="8"/>
 <circle cx="1250" cy="434" r="172" fill="#BFE8D4"/>
 <g transform="translate(1250 434) scale(1.3)"><rect x="-62" y="-66" width="124" height="142" rx="16" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11"/>
     <rect x="-28" y="-82" width="56" height="30" rx="10" fill="#3FA882" stroke="#5C3D2E" stroke-width="9"/>
     <path d="M-38 -14l10 10 18-20M-38 32l10 10 18-20" fill="none" stroke="#5C3D2E" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M6 -10h34M6 36h34" fill="none" stroke="#5C3D2E" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></g>
-<text x="1250" y="768" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">ดูแจ้งเตือน</text>
+<text x="1250" y="768" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">งาน</text>
 <rect x="1693" y="176" width="781" height="716" rx="56" fill="#FFFDF7" stroke="#8FD3B6" stroke-width="8"/>
 <circle cx="2083.5" cy="434" r="172" fill="#BFE8D4"/>
-<g transform="translate(2083.5 434) scale(1.3)"><path d="M14 -84L-48 8h40l-18 76L52 -14H10z" fill="#3FA882" stroke="#5C3D2E" stroke-width="11" stroke-linejoin="round"/></g>
-<text x="2083.5" y="768" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">หาจุดชาร์จ EV</text>
+<g transform="translate(2083.5 434) scale(1.3)"><rect x="-60" y="-8" width="120" height="78" rx="12" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11"/>
+    <rect x="-72" y="-44" width="144" height="38" rx="12" fill="#3FA882" stroke="#5C3D2E" stroke-width="11"/>
+    <path d="M0 -44V70" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M0 -44c-26-40-62-30-46-8M0 -44c26-40 62-30 46-8" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="2083.5" y="768" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">วันสำคัญ</text>
 <rect x="26" y="944" width="781" height="716" rx="56" fill="#FFFDF7" stroke="#8FD3B6" stroke-width="8"/>
 <circle cx="416.5" cy="1202" r="172" fill="#BFE8D4"/>
-<g transform="translate(416.5 1202) scale(1.3)"><path d="M-84 24v-30a16 16 0 0 1 12-15l24-8 22-28a16 16 0 0 1 12-6h48a16 16 0 0 1 13 7l20 27 27 8a14 14 0 0 1 10 14v31z" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11" stroke-linejoin="round"/>
-    <path d="M-30 -42l-14 26h54v-26zM22 -42v26h50l-18-26z" fill="#BFE8D4" stroke="#5C3D2E" stroke-width="7" stroke-linejoin="round"/>
-    <circle cx="-48" cy="30" r="22" fill="#3FA882" stroke="#5C3D2E" stroke-width="10"/>
-    <circle cx="52" cy="30" r="22" fill="#3FA882" stroke="#5C3D2E" stroke-width="10"/></g>
-<text x="416.5" y="1536" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">ตั้งค่ารถ</text>
+<g transform="translate(416.5 1202) scale(1.3)"><path d="M14 -84L-48 8h40l-18 76L52 -14H10z" fill="#3FA882" stroke="#5C3D2E" stroke-width="11" stroke-linejoin="round"/></g>
+<text x="416.5" y="1536" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">หาจุดชาร์จ EV</text>
 <rect x="859" y="944" width="782" height="716" rx="56" fill="#FFFDF7" stroke="#8FD3B6" stroke-width="8"/>
 <circle cx="1250" cy="1202" r="172" fill="#BFE8D4"/>
 <g transform="translate(1250 1202) scale(1.3)"><rect x="-70" y="-56" width="140" height="130" rx="16" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11"/>

@@ -2,6 +2,7 @@
 // ทุกตัวเลือกเป็น "ข้อความคำสั่งเดิม" จึงผ่าน flow/ขั้นตอนยืนยันเดิมทั้งหมด
 const { getTrips, getTripPlaces, markTripPlaceVisitedById, deleteTripPlaceById } = require('../../services/db');
 const { handleListNotes, handleListPlaces } = require('./trip');
+const { handleListTodos, handleListEvents } = require('./planner');
 const { answerForUser } = require('./nl-dispatch');
 
 const MAX_QUICK_REPLIES = 13;
@@ -164,6 +165,21 @@ async function handleMenuPostback(data, userContext = {}) {
     return withQuickReplies('💬 ถามได้เลย หรือพิมพ์คำถามเองก็ได้ เช่น "เดือนนี้กินกาแฟไปเท่าไหร่"', [
       ...Object.keys(MENU_QUESTIONS).map((q) => sayItem(q)),
     ]);
+  }
+
+  if (action === 'menu_notify') {
+    return withQuickReplies('⏰ แจ้งเตือน\nตั้งแบบเลือกจากปฏิทิน หรือพิมพ์เอง เช่น เตือนพรุ่งนี้บ่ายสาม ซื้อนม', [
+      sayItem('⏰ ตั้งแจ้งเตือนใหม่', 'แจ้งเตือนใหม่'),
+      sayItem('📋 ดูแจ้งเตือน', 'ดูแจ้งเตือน'),
+    ]);
+  }
+
+  // งาน (To-Do ร่วมกัน) / วันสำคัญ: แสดงลิสต์จริง + ปุ่มจัดการจากคำสั่งเดิม + ปุ่มเปิดคีย์บอร์ดเพิ่มรายการ
+  if (action === 'menu_todo' || action === 'menu_events') {
+    const todo = action === 'menu_todo';
+    const result = await (todo ? handleListTodos : handleListEvents)(userContext.lineUserId || 'unknown');
+    const add = todo ? fillItem('➕ เพิ่มงาน', 'เพิ่มงาน ') : fillItem('➕ เพิ่มวันสำคัญ', 'เพิ่มวันสำคัญ ');
+    return withQuickReplies(result.reply, [add, ...(result.quickReplies || []).map((q) => sayItem(q.label, q.text))]);
   }
 
   if (action === 'menu_ev') {

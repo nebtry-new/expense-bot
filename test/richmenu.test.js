@@ -75,7 +75,7 @@ test('rich menu: tab switching targets the two aliases and every action is well-
 test('rich menu: message buttons send commands the bot really understands', async () => {
   await setup();
   const sent = Object.values(BUTTONS).flat().map((b) => b.action).filter((a) => a.type === 'message').map((a) => a.text);
-  assert.deepEqual(sent.sort(), ['help', 'ดูแจ้งเตือน', 'แจ้งเตือนใหม่', 'ลบรายการ', 'สรุป', 'สรุปยอดเดือนนี้'].sort());
+  assert.deepEqual(sent.sort(), ['help', 'ลบรายการ', 'สรุป', 'สรุปยอดเดือนนี้'].sort());
 
   __setInterpreter(async () => { throw new Error('no model for fixed commands'); });
   for (const text of sent) {
@@ -216,6 +216,39 @@ test('menu_ask / menu_ev / menu_record / unknown', async () => {
 
   assert.ok((await handleMenuPostback('action=menu_record', u1)).text.includes('ค่าข้าว'));
   assert.equal(await handleMenuPostback('action=menu_nope', u1), null);
+});
+
+test('menu_notify offers set/list notification commands the bot understands', async () => {
+  await setup();
+  const m = await handleMenuPostback('action=menu_notify', u1);
+  assertValidQuickReply(m);
+  assert.deepEqual(m.quickReply.items.map((i) => i.action.text), ['แจ้งเตือนใหม่', 'ดูแจ้งเตือน']);
+});
+
+test('menu_todo / menu_events: empty state offers the add button; real lists add ✅/❌ buttons and stay within 13', async () => {
+  await setup();
+  const emptyTodo = await handleMenuPostback('action=menu_todo', u1);
+  assertValidQuickReply(emptyTodo);
+  assert.deepEqual(pbData(emptyTodo), ['เพิ่มงาน ']);
+  const emptyEvents = await handleMenuPostback('action=menu_events', u1);
+  assert.deepEqual(pbData(emptyEvents), ['เพิ่มวันสำคัญ ']);
+
+  for (let i = 1; i <= 15; i += 1) await handleTextMessage(`เพิ่มงาน งานที่ ${i}`, u1);
+  await handleTextMessage('เพิ่มวันสำคัญ วันเกิดแฟน 14 มี.ค.', u1);
+
+  const todo = await handleMenuPostback('action=menu_todo', u1);
+  assertValidQuickReply(todo);
+  assert.equal(todo.quickReply.items.length, MAX_QUICK_REPLIES);
+  assert.equal(pbData(todo)[0], 'เพิ่มงาน ');
+  assert.ok(pbData(todo).includes('เสร็จ 1'));
+  // ปุ่มจากเมนูใช้เลขอ้างอิงลิสต์ที่เพิ่งแสดง → เสร็จ 1 ทำงานข้อแรกจริง
+  const done = await handleTextMessage('เสร็จ 1', u1);
+  assert.equal(done.type, 'todo_done');
+
+  const ev = await handleMenuPostback('action=menu_events', u1);
+  assertValidQuickReply(ev);
+  assert.deepEqual(pbData(ev), ['เพิ่มวันสำคัญ ', 'ลบวันสำคัญ 1']);
+  assert.ok(ev.text.includes('วันเกิดแฟน'));
 });
 
 // ---------- คำถามจากเมนูไม่ต้องใช้โมเดล ----------

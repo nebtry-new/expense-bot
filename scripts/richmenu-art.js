@@ -50,18 +50,18 @@ const ICONS = {
     <path d="M82 -70L4 22l-4 52 -20 -42" ${S}/>`,
   ask: () => `<path d="M-70 -56h140a10 10 0 0 1 10 10v82a10 10 0 0 1-10 10H-6l-42 36v-36h-22a10 10 0 0 1-10-10v-82a10 10 0 0 1 10-10z" fill="${C.card}" stroke="${C.brown}" stroke-width="11" stroke-linejoin="round"/>
     <circle cx="-36" cy="-4" r="9" fill="${C.mintDark}"/><circle cx="0" cy="-4" r="9" fill="${C.mintDark}"/><circle cx="36" cy="-4" r="9" fill="${C.mintDark}"/>`,
-  reminder: () => `<path d="M0 -76c-40 0-60 28-60 62v34l-16 22h152l-16-22v-34c0-34-20-62-60-62z" fill="${C.card}" stroke="${C.brown}" stroke-width="11" stroke-linejoin="round"/>
+  notify: () => `<path d="M0 -76c-40 0-60 28-60 62v34l-16 22h152l-16-22v-34c0-34-20-62-60-62z" fill="${C.card}" stroke="${C.brown}" stroke-width="11" stroke-linejoin="round"/>
     <path d="M-20 62a20 20 0 0 0 40 0" ${S}/>
     <circle cx="0" cy="-84" r="9" fill="${C.mintDark}"/>`,
-  reminders: () => `<rect x="-62" y="-66" width="124" height="142" rx="16" fill="${C.card}" stroke="${C.brown}" stroke-width="11"/>
+  todo: () => `<rect x="-62" y="-66" width="124" height="142" rx="16" fill="${C.card}" stroke="${C.brown}" stroke-width="11"/>
     <rect x="-28" y="-82" width="56" height="30" rx="10" fill="${C.mintDark}" stroke="${C.brown}" stroke-width="9"/>
     <path d="M-38 -14l10 10 18-20M-38 32l10 10 18-20" ${line(10)}/>
     <path d="M6 -10h34M6 36h34" ${line(10)}/>`,
   ev: () => `<path d="M14 -84L-48 8h40l-18 76L52 -14H10z" fill="${C.mintDark}" stroke="${C.brown}" stroke-width="11" stroke-linejoin="round"/>`,
-  car: () => `<path d="M-84 24v-30a16 16 0 0 1 12-15l24-8 22-28a16 16 0 0 1 12-6h48a16 16 0 0 1 13 7l20 27 27 8a14 14 0 0 1 10 14v31z" fill="${C.card}" stroke="${C.brown}" stroke-width="11" stroke-linejoin="round"/>
-    <path d="M-30 -42l-14 26h54v-26zM22 -42v26h50l-18-26z" fill="${C.mint}" stroke="${C.brown}" stroke-width="7" stroke-linejoin="round"/>
-    <circle cx="-48" cy="30" r="22" fill="${C.mintDark}" stroke="${C.brown}" stroke-width="10"/>
-    <circle cx="52" cy="30" r="22" fill="${C.mintDark}" stroke="${C.brown}" stroke-width="10"/>`,
+  events: () => `<rect x="-60" y="-8" width="120" height="78" rx="12" fill="${C.card}" stroke="${C.brown}" stroke-width="11"/>
+    <rect x="-72" y="-44" width="144" height="38" rx="12" fill="${C.mintDark}" stroke="${C.brown}" stroke-width="11"/>
+    <path d="M0 -44V70" ${S}/>
+    <path d="M0 -44c-26-40-62-30-46-8M0 -44c26-40 62-30 46-8" ${S}/>`,
   monthly: () => `<rect x="-70" y="-56" width="140" height="130" rx="16" fill="${C.card}" stroke="${C.brown}" stroke-width="11"/>
     <path d="M-70 -14h140" ${S}/>
     <path d="M-34 -78v36M34 -78v36" ${S}/>

@@ -27,10 +27,10 @@ const BUTTONS = {
     { key: 'ask', title: '💬 ถามข้อมูล', action: post('ถามข้อมูล', 'action=menu_ask') },
   ],
   more: [
-    { key: 'reminder', title: '⏰ ตั้งแจ้งเตือน', action: msg('ตั้งแจ้งเตือน', 'แจ้งเตือนใหม่') },
-    { key: 'reminders', title: '📋 ดูแจ้งเตือน', action: msg('ดูแจ้งเตือน', 'ดูแจ้งเตือน') },
+    { key: 'notify', title: '⏰ แจ้งเตือน', action: post('แจ้งเตือน', 'action=menu_notify') },
+    { key: 'todo', title: '📋 งาน', action: post('งาน', 'action=menu_todo') },
+    { key: 'events', title: '🎉 วันสำคัญ', action: post('วันสำคัญ', 'action=menu_events') },
     { key: 'ev', title: '🔌 หาจุดชาร์จ EV', action: post('หาจุดชาร์จ EV', 'action=menu_ev') },
-    { key: 'car', title: '🚗 ตั้งค่ารถ', action: fillIn('ตั้งค่ารถ', 'action=menu_car', 'ตั้งค่ารถ ') },
     { key: 'monthly', title: '📅 สรุปเดือนนี้', action: msg('สรุปเดือนนี้', 'สรุปยอดเดือนนี้') },
     { key: 'help', title: '❓ วิธีใช้', action: msg('วิธีใช้', 'help') },
   ],
