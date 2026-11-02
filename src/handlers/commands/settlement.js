@@ -120,6 +120,18 @@ async function handleConfirmYes(userContext) {
   const pendingDelete = deleteConfirmState.pendingByUser[currentLineUserId];
   if (pendingDelete) {
     delete deleteConfirmState.pendingByUser[currentLineUserId];
+    if (pendingDelete.items) {
+      for (const item of pendingDelete.items) await deleteExpenseById(item.id);
+      const total = pendingDelete.items.reduce((sum, t) => sum + Number(t.amount), 0);
+      return {
+        type: 'expense_deleted',
+        reply: [
+          `ยกเลิก ${pendingDelete.items.length} รายการแล้ว:`,
+          ...pendingDelete.items.map((t) => `• ${t.description} ${Number(t.amount).toLocaleString()} บาท`),
+          `รวม ${total.toLocaleString()} บาท`,
+        ].join('\n'),
+      };
+    }
     await deleteExpenseById(pendingDelete.id);
     return {
       type: 'expense_deleted',

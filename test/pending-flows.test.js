@@ -169,3 +169,56 @@ test('ลบรายการ orders same-timestamp expenses newest-first and �
   const left = (await getExpenses()).map((e) => e.description).sort();
   assert.deepEqual(left, ['ค่ากาแฟ', 'ค่าอาหาร']);
 });
+
+// ---------- ลบหลายรายการในคำสั่งเดียว ----------
+
+async function seedFour() {
+  await setup();
+  for (const t of ['ข้าว 10', 'กาแฟ 20', 'ขนม 30', 'น้ำ 40']) await handleTextMessage(t, u1);
+}
+
+test('ลบ 1 3 / ลบ 1,3 / ลบ 1 และ 3 → ยืนยันครั้งเดียวแล้วลบทั้งสองรายการ', async () => {
+  for (const cmd of ['ลบ 1 3', 'ลบ 1,3', 'ลบ 1 และ 3']) {
+    await seedFour();
+    await handleTextMessage('ลบรายการ', u1); // ใหม่สุดก่อน: 1=น้ำ 2=ขนม 3=กาแฟ 4=ข้าว
+    const prompt = await handleTextMessage(cmd, u1);
+    assert.equal(prompt.type, 'expense_delete_prompt', cmd);
+    assert.ok(prompt.reply.includes('2 รายการ') && prompt.reply.includes('รวม 60'), prompt.reply);
+    assert.equal((await getExpenses()).length, 4, 'ยังไม่ลบจนกว่าจะยืนยัน');
+
+    const done = await handleTextMessage('ใช่', u1);
+    assert.equal(done.type, 'expense_deleted');
+    const left = (await getExpenses()).map((e) => e.description).sort();
+    assert.equal(left.length, 2, cmd);
+    assert.ok(!left.includes('น้ำ') && !left.includes('กาแฟ'), `${cmd}: ${left}`);
+  }
+});
+
+test('ลบ 2-4 ลบเป็นช่วง และเลขซ้ำนับครั้งเดียว', async () => {
+  await seedFour();
+  await handleTextMessage('ลบรายการ', u1);
+  const prompt = await handleTextMessage('ลบ 2-4 3', u1);
+  assert.ok(prompt.reply.includes('3 รายการ'), prompt.reply);
+  await handleTextMessage('ใช่', u1);
+  assert.equal((await getExpenses()).length, 1);
+});
+
+test('ลบหลายเลขที่มีเลขเกินลิสต์ → error และไม่ลบอะไรเลย', async () => {
+  await seedFour();
+  await handleTextMessage('ลบรายการ', u1);
+  const r = await handleTextMessage('ลบ 1 9', u1);
+  assert.equal(r.type, 'error');
+  assert.ok(r.reply.includes('9'));
+  assert.equal((await handleTextMessage('ใช่', u1)).type, 'noop');
+  assert.equal((await getExpenses()).length, 4);
+});
+
+test('ข้อความอื่นหลังเลือกหลายรายการ → ยกเลิกการลบ', async () => {
+  await seedFour();
+  await handleTextMessage('ลบรายการ', u1);
+  await handleTextMessage('ลบ 1 2', u1);
+  await handleTextMessage('สรุป', u1);
+  assert.equal(deleteConfirmState.pendingByUser.u1, undefined);
+  await handleTextMessage('ใช่', u1);
+  assert.equal((await getExpenses()).length, 4);
+});

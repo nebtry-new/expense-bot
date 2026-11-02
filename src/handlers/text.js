@@ -37,6 +37,7 @@ const HELP_TEXT = [
   '━━ 🗑 ลบ / ยกเลิกรายการ ━━',
   '• ยกเลิกรายการล่าสุด: ยกเลิกรายการล่าสุด → ใช่',
   '• เลือกลบรายการเอง: ลบรายการ [คำค้น/#ทริป] → ลบ [เลข] → ใช่ (รวมรายการของแฟน)',
+  '• ลบหลายรายการพร้อมกัน: ลบ 1 3 5  หรือ  ลบ 2-4 → ใช่',
   '',
   '━━ ✈️ ทริป ━━',
   '• สร้างทริป: สร้างทริป (ชื่อ)  หรือ  สร้างทริป (ชื่อ) หาร 3',
@@ -88,7 +89,9 @@ const YES_RE = /^(ใช่|yes|ok|เรียกเก็บเงิน)$/i;
 const CANCEL_RE = /^(ยกเลิก|cancel|ไม่เอา)$/i;
 const MAPS_URL_RE = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/;
 // Commands that never belong to a free-text flow (datetime picker reply)
-const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+|ตรวจแจ้งเตือน|สถานะแจ้งเตือน|ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
+// ลบ 2 / ลบ 1 3 5 / ลบ 1,3 / ลบ 1 และ 3 / ลบ 2-4
+const DELETE_PICK_RE = /^ลบ\s*(\d+(?:\s*(?:-|ถึง)\s*\d+)?(?:(?:\s*,\s*|\s+และ\s+|\s+)\d+(?:\s*(?:-|ถึง)\s*\d+)?)*)$/i;
+const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+[\d\s,\-และถึง]*|ตรวจแจ้งเตือน|สถานะแจ้งเตือน|ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
 
 // ประโยคที่บอกว่าใครจ่าย/เลี้ยงใคร parser เดิมอ่านไม่ออก (มันเห็นแค่ "ชื่อ + ตัวเลข") → ให้ Claude ตีความก่อน
 const NL_CUE_RE = /(ออกให้|เลี้ยง|จ่ายแทน|แฟนออก|แฟนจ่าย|ออกค่า|จ่ายให้|โอนให้|ยืม|คืน|ทด(?:ให้|ไว้|ก่อน)|สำรอง|ฝากจ่าย|ฝากซื้อ|ต้องคืน|ขอคืน)/;
@@ -130,7 +133,7 @@ function dropStalePendingFlows(text, lineUserId) {
     delete nlCommandState.pendingByUser[lineUserId];
   }
 
-  if (deleteListState.pendingByUser[lineUserId] && !/^ลบ\s*\d+$/.test(text)) {
+  if (deleteListState.pendingByUser[lineUserId] && !DELETE_PICK_RE.test(text)) {
     delete deleteListState.pendingByUser[lineUserId];
   }
 
@@ -259,9 +262,9 @@ async function handleTextMessage(text, userContext = {}) {
     return handleListDeletableExpenses(deleteListMatch[1], userContext);
   }
 
-  const pickDeleteMatch = normalized.match(/^ลบ\s*(\d+)$/i);
+  const pickDeleteMatch = normalized.match(DELETE_PICK_RE);
   if (pickDeleteMatch) {
-    return handlePickDeleteExpense(Number.parseInt(pickDeleteMatch[1], 10), userContext);
+    return handlePickDeleteExpense(pickDeleteMatch[1], userContext);
   }
 
   if (/^(สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้)$/i.test(normalized)) {

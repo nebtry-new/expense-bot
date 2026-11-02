@@ -374,26 +374,61 @@ async function handleListDeletableExpenses(keyword, userContext) {
   };
 }
 
-// ผู้ใช้เลือกเลขจากลิสต์ → ขอยืนยัน (ใช้ flow "ใช่" เดิม)
-function handlePickDeleteExpense(index, userContext) {
+// "1 3 5" / "1,3,5" / "1 และ 3" / "2-4" / "2ถึง4" → [1,3,5] (ไม่ซ้ำ เรียงตามที่พิมพ์) ; คืน null ถ้าช่วงไม่สมเหตุสมผล
+function parseIndexList(spec) {
+  const out = [];
+  const re = /(\d+)(?:\s*(?:-|ถึง)\s*(\d+))?/g;
+  let m;
+  while ((m = re.exec(String(spec)))) {
+    const from = Number.parseInt(m[1], 10);
+    const to = m[2] ? Number.parseInt(m[2], 10) : from;
+    if (to < from || to - from > DELETE_LIST_LIMIT) return null;
+    for (let i = from; i <= to; i += 1) if (!out.includes(i)) out.push(i);
+  }
+  return out;
+}
+
+const fmtTarget = (t) => `${t.description} ${Number(t.amount).toLocaleString()} บาท${t.paidByName ? ` (${t.paidByName} จ่าย)` : ''}`;
+
+// ผู้ใช้เลือกเลขจากลิสต์ (เลขเดียวหรือหลายเลขในคำสั่งเดียว) → ขอยืนยัน (ใช้ flow "ใช่" เดิม)
+function handlePickDeleteExpense(spec, userContext) {
   const lineUserId = userContext.lineUserId || 'unknown';
   const list = deleteListState.pendingByUser[lineUserId];
   if (!list) {
     return { type: 'noop', reply: 'ยังไม่มีลิสต์รายการ พิมพ์ ลบรายการ เพื่อดูรายการที่ลบได้ก่อน' };
   }
 
-  const target = list[index - 1];
-  if (!target) {
-    return { type: 'error', reply: `ไม่พบรายการเลข ${index} กรุณาเลือกเลข 1-${list.length}` };
+  const indexes = parseIndexList(spec);
+  if (!indexes || !indexes.length) {
+    return { type: 'error', reply: `รูปแบบเลขไม่ถูกต้อง ตัวอย่าง: ลบ 2 หรือ ลบ 1 3 5 หรือ ลบ 2-4 (เลข 1-${list.length})` };
+  }
+  const bad = indexes.filter((i) => i < 1 || i > list.length);
+  if (bad.length) {
+    return { type: 'error', reply: `ไม่พบรายการเลข ${bad.join(', ')} กรุณาเลือกเลข 1-${list.length}` };
   }
 
-  console.log('DELETE_PICK', { lineUserId, index, picked: target.id, list: list.map((t) => t.id) });
+  const targets = indexes.map((i) => list[i - 1]);
+  console.log('DELETE_PICK', { lineUserId, indexes, picked: targets.map((t) => t.id), list: list.map((t) => t.id) });
   delete deleteListState.pendingByUser[lineUserId];
-  deleteConfirmState.pendingByUser[lineUserId] = target;
 
+  if (targets.length === 1) {
+    deleteConfirmState.pendingByUser[lineUserId] = targets[0];
+    return {
+      type: 'expense_delete_prompt',
+      reply: `รายการ: ${fmtTarget(targets[0])}\nต้องการลบใช่หรือไม่? พิมพ์ ใช่ เพื่อยืนยัน`,
+    };
+  }
+
+  deleteConfirmState.pendingByUser[lineUserId] = { items: targets };
+  const total = targets.reduce((sum, t) => sum + Number(t.amount), 0);
   return {
     type: 'expense_delete_prompt',
-    reply: `รายการ: ${target.description} ${Number(target.amount).toLocaleString()} บาท${target.paidByName ? ` (${target.paidByName} จ่าย)` : ''}\nต้องการลบใช่หรือไม่? พิมพ์ ใช่ เพื่อยืนยัน`,
+    reply: [
+      `จะลบ ${targets.length} รายการ:`,
+      ...targets.map((t, i) => `${indexes[i]}. ${fmtTarget(t)}`),
+      `รวม ${total.toLocaleString()} บาท`,
+      'ต้องการลบทั้งหมดใช่หรือไม่? พิมพ์ ใช่ เพื่อยืนยัน',
+    ].join('\n'),
   };
 }
 
