@@ -1,13 +1,13 @@
 const { registerUser, getUsers, resetData, terminateUserByName, restoreUserByName, renameUserByLineId, resetState } = require('../services/db');
 const { handleSummary, handleMonthlySummary } = require('./commands/summary');
 const { handlePaymentSent, handlePaymentReceived, handleConfirmYes } = require('./commands/settlement');
-const { handleExpenseLines, handleDeleteLastExpense } = require('./commands/expense');
+const { handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense } = require('./commands/expense');
 const { handleSlipOverride } = require('./commands/slip');
 const { handleCreateTrip, handleListTrips, handleTripSummary, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
 const { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification } = require('./commands/notifications');
 const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
-const { clearAllState, slipConfirmState, datetimePickerState, deleteConfirmState } = require('./state');
+const { clearAllState, slipConfirmState, datetimePickerState, deleteConfirmState, deleteListState } = require('./state');
 
 const HELP_TEXT = [
   'คู่มือการใช้งาน',
@@ -28,6 +28,7 @@ const HELP_TEXT = [
   '7) เปลี่ยนชื่อ: เปลี่ยนชื่อ (ชื่อใหม่)',
   '8) ยกเลิกรายการล่าสุด: ยกเลิกรายการล่าสุด',
   '9) reset: reset-all → reset-confirm',
+  '10) ลบรายการที่ระบุ: ลบรายการ [คำค้น/#ทริป] → ลบ [เลข] → ใช่',
   '',
   '── ทริป ──',
   'สร้างทริป (หารครึ่ง): สร้างทริป (ชื่อ)',
@@ -67,7 +68,7 @@ const YES_RE = /^(ใช่|yes|ok|เรียกเก็บเงิน)$/i;
 const CANCEL_RE = /^(ยกเลิก|cancel|ไม่เอา)$/i;
 const MAPS_URL_RE = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/;
 // Commands that never belong to a free-text flow (datetime picker reply)
-const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
+const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน)$|^(สร้างทริป|สรุปทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
 
 function isSlipReply(text) {
   return YES_RE.test(text)
@@ -95,6 +96,10 @@ function dropStalePendingFlows(text, lineUserId) {
 
   if (deleteConfirmState.pendingByUser[lineUserId] && !YES_RE.test(text)) {
     delete deleteConfirmState.pendingByUser[lineUserId];
+  }
+
+  if (deleteListState.pendingByUser[lineUserId] && !/^ลบ\s*\d+$/.test(text)) {
+    delete deleteListState.pendingByUser[lineUserId];
   }
 
   if (datetimePickerState.pendingByUser[lineUserId] && COMMAND_RE.test(text)) {
@@ -196,6 +201,16 @@ async function handleTextMessage(text, userContext = {}) {
 
   if (/^(ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo)$/i.test(normalized)) {
     return handleDeleteLastExpense(userContext);
+  }
+
+  const deleteListMatch = normalized.match(/^ลบรายการ(?:\s+(.+))?$/i);
+  if (deleteListMatch) {
+    return handleListDeletableExpenses(deleteListMatch[1], userContext);
+  }
+
+  const pickDeleteMatch = normalized.match(/^ลบ\s*(\d+)$/i);
+  if (pickDeleteMatch) {
+    return handlePickDeleteExpense(Number.parseInt(pickDeleteMatch[1], 10), userContext);
   }
 
   if (/^(สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้)$/i.test(normalized)) {

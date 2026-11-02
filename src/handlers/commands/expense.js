@@ -1,6 +1,6 @@
 const { parseExpenseText, formatSplitMode } = require('../../utils/parser');
-const { addExpense, getUsers, findLastExpense, findTripByName } = require('../../services/db');
-const { deleteConfirmState } = require('../state');
+const { addExpense, getUsers, getExpenses, getTrips, findLastExpense, findTripByName } = require('../../services/db');
+const { deleteConfirmState, deleteListState } = require('../state');
 
 async function handleExpenseLines(inputLines, userContext) {
   const lineUserId = userContext.lineUserId || 'unknown';
@@ -152,4 +152,71 @@ async function handleDeleteLastExpense(userContext) {
   };
 }
 
-module.exports = { handleExpenseLines, handleDeleteLastExpense };
+const DELETE_LIST_LIMIT = 15;
+
+// แสดงรายการที่ยังไม่เคลียร์ของผู้ใช้ (รวมรายการในทริป) ให้เลือกลบด้วยเลข
+// keyword (optional) กรองจากชื่อรายการหรือชื่อทริป
+async function handleListDeletableExpenses(keyword, userContext) {
+  const lineUserId = userContext.lineUserId || 'unknown';
+  const allUsers = await getUsers();
+  const currentUser = allUsers.find((u) => u.lineUserId === lineUserId);
+  if (!currentUser) {
+    return { type: 'error', reply: 'ไม่พบผู้ใช้ในระบบ กรุณาลงทะเบียนก่อน' };
+  }
+
+  const [expenses, trips] = await Promise.all([getExpenses(), getTrips()]);
+  const tripsMap = Object.fromEntries(trips.map((t) => [t.id, t.name]));
+  const kw = (keyword || '').replace(/^#/, '').trim().toLowerCase();
+
+  const candidates = expenses
+    .filter((e) => String(e.paidByUserId) === String(currentUser.id) && !e.isCleared)
+    .filter((e) => !kw
+      || String(e.description || '').toLowerCase().includes(kw)
+      || String(tripsMap[e.tripId] || '').toLowerCase().includes(kw))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, DELETE_LIST_LIMIT);
+
+  if (!candidates.length) {
+    return { type: 'noop', reply: 'ไม่พบรายการที่สามารถลบได้' };
+  }
+
+  deleteListState.pendingByUser[lineUserId] = candidates.map((e) => ({
+    id: e.id,
+    description: e.description,
+    amount: Number(e.amount),
+  }));
+
+  const lines = candidates.map((e, i) => {
+    const trip = e.tripId ? ` [${tripsMap[e.tripId] || 'ทริป'}]` : '';
+    return `${i + 1}. ${e.description}${trip} ${Number(e.amount).toLocaleString()} บาท`;
+  });
+
+  return {
+    type: 'expense_delete_list',
+    reply: ['รายการที่ลบได้ (ใหม่สุดก่อน):', ...lines, '', 'พิมพ์ ลบ [เลข] เพื่อเลือกรายการ เช่น ลบ 2'].join('\n'),
+  };
+}
+
+// ผู้ใช้เลือกเลขจากลิสต์ → ขอยืนยัน (ใช้ flow "ใช่" เดิม)
+function handlePickDeleteExpense(index, userContext) {
+  const lineUserId = userContext.lineUserId || 'unknown';
+  const list = deleteListState.pendingByUser[lineUserId];
+  if (!list) {
+    return { type: 'noop', reply: 'ยังไม่มีลิสต์รายการ พิมพ์ ลบรายการ เพื่อดูรายการที่ลบได้ก่อน' };
+  }
+
+  const target = list[index - 1];
+  if (!target) {
+    return { type: 'error', reply: `ไม่พบรายการเลข ${index} กรุณาเลือกเลข 1-${list.length}` };
+  }
+
+  delete deleteListState.pendingByUser[lineUserId];
+  deleteConfirmState.pendingByUser[lineUserId] = target;
+
+  return {
+    type: 'expense_delete_prompt',
+    reply: `รายการ: ${target.description} ${Number(target.amount).toLocaleString()} บาท\nต้องการลบใช่หรือไม่? พิมพ์ ใช่ เพื่อยืนยัน`,
+  };
+}
+
+module.exports = { handleExpenseLines, handleDeleteLastExpense, handleListDeletableExpenses, handlePickDeleteExpense };
