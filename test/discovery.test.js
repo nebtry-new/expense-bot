@@ -7,6 +7,7 @@ const { __setPlaceResolver, parsePlaceFromUrl, extractMapsLink } = require('../s
 const { __setRandom } = require('../src/handlers/commands/restaurants');
 const { parseTitlePrice, similar } = require('../src/handlers/commands/gifts');
 const { runGiftHints, eventTarget, __setGreetingWriter } = require('../src/services/planner-reminders');
+const { toReplyPayload } = require('../src/utils/quick-reply');
 
 const u1 = { lineUserId: 'u1' };
 const u2 = { lineUserId: 'u2' };
@@ -48,6 +49,33 @@ test('เพิ่มร้าน: จากลิงก์ (ดึงชื่�
   assert.equal((await handleTextMessage('เพิ่มร้าน ร้านต้มยำ', u1)).type, 'noop'); // ซ้ำ
   assert.equal((await handleTextMessage('เพิ่มร้าน https://maps.app.goo.gl/zzz', u1)).type, 'error'); // อ่านชื่อไม่ได้ ต้องระบุเอง
   assert.equal((await listRestaurants()).length, 3);
+});
+
+test('เพิ่มร้าน: มีปุ่ม ➕ เพิ่มร้านอีก (เปิดคีย์บอร์ดพร้อม "เพิ่มร้าน ") ให้เพิ่มต่อเนื่องได้ ทั้งหลังเพิ่มสำเร็จ/ซ้ำ/อ่านชื่อไม่ได้', async () => {
+  await setup();
+  const addMore = (r) => r.quickReplies.find((q) => q.fillIn === 'เพิ่มร้าน ');
+
+  const first = await handleTextMessage('เพิ่มร้าน ราเมน', u1);
+  assert.equal(first.type, 'restaurant_added');
+  assert.ok(addMore(first), JSON.stringify(first.quickReplies));
+  assert.equal(first.quickReplies[0].label, '➕ เพิ่มร้านอีก'); // เป็นปุ่มแรก
+
+  // เพิ่มต่อทันทีได้เรื่อยๆ (ทำซ้ำ: ปุ่มยังอยู่ทุกครั้ง)
+  for (const name of ['ส้มตำ', 'ซูชิ', 'หมูกระทะ']) {
+    const r = await handleTextMessage(`เพิ่มร้าน ${name}`, u1);
+    assert.equal(r.type, 'restaurant_added');
+    assert.ok(addMore(r));
+  }
+  assert.equal((await listRestaurants()).length, 4);
+
+  assert.ok(addMore(await handleTextMessage('เพิ่มร้าน ราเมน', u1))); // ซ้ำ → ยังมีปุ่มให้เพิ่มร้านอื่นต่อ
+  assert.ok((await handleTextMessage('เพิ่มร้าน https://maps.app.goo.gl/zzz', u1)).quickReplies.some((q) => q.fillIn)); // อ่านชื่อไม่ได้ → ปุ่มลองใหม่
+
+  // ที่ LINE: เป็นปุ่ม postback เปิดคีย์บอร์ดพร้อมข้อความตั้งต้น และยังมี ✖ ยกเลิก ท้ายสุด
+  const items = toReplyPayload(first).quickReply.items;
+  assert.deepEqual(items[0].action, { type: 'postback', label: '➕ เพิ่มร้านอีก', data: 'action=noop', inputOption: 'openKeyboard', fillInText: 'เพิ่มร้าน ' });
+  assert.equal(items.at(-1).action.data, 'action=menu_cancel');
+  assert.ok(items.length <= 13);
 });
 
 test('สุ่มร้าน: ข้ามร้านที่ไปแล้ว ไม่ซ้ำร้านเดิม กรองด้วยคำค้น และไปครบแล้วสุ่มจากทั้งหมด', async () => {

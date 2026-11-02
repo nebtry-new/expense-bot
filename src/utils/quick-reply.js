@@ -1,4 +1,4 @@
-// แปลง { reply, quickReplies: [{ label, text }] } จาก handler เป็นข้อความ LINE ที่มีปุ่ม quick reply
+// แปลง { reply, quickReplies: [{ label, text } | { label, fillIn }] } จาก handler เป็นข้อความ LINE ที่มีปุ่ม quick reply
 // ปุ่มแต่ละอันส่ง "ข้อความคำสั่งเดิม" กลับมา จึงผ่าน flow/ขั้นตอนยืนยันเดิมทั้งหมด
 const MAX_QUICK_REPLIES = 13; // ขีดจำกัดของ LINE
 const MAX_LABEL = 20;
@@ -22,7 +22,10 @@ function buildQuickReplyMessage(text, quickReplies = [], { cancel = false } = {}
   const addCancel = cancel && quickReplies.length > 0 && !quickReplies.some(isDismiss);
   const items = quickReplies.slice(0, addCancel ? MAX_QUICK_REPLIES - 1 : MAX_QUICK_REPLIES).map((q) => ({
     type: 'action',
-    action: { type: 'message', label: truncate(q.label), text: q.text ?? q.label },
+    // q.fillIn = ปุ่มที่เปิดคีย์บอร์ดพร้อมข้อความตั้งต้น (ให้พิมพ์ต่อเอง เช่น "เพิ่มร้าน ") — แบบเดียวกับปุ่ม ➕ ใน Rich menu
+    action: q.fillIn != null
+      ? { type: 'postback', label: truncate(q.label), data: 'action=noop', inputOption: 'openKeyboard', fillInText: q.fillIn }
+      : { type: 'message', label: truncate(q.label), text: q.text ?? q.label },
   }));
   if (addCancel) items.push(cancelItem());
   return items.length ? { type: 'text', text, quickReply: { items } } : { type: 'text', text };

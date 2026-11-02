@@ -389,6 +389,9 @@ test('buildQuickReplyMessage: cancel เป็นตัวเลือก — �
   const many = buildQuickReplyMessage('x', Array.from({ length: 20 }, (_, i) => ({ label: `b${i}`, text: `b${i}` })), { cancel: true });
   assert.equal(many.quickReply.items.length, MAX_QUICK_REPLIES);
   assert.equal(many.quickReply.items.at(-1).action.data, CANCEL);
+  // ปุ่ม fillIn → postback เปิดคีย์บอร์ดพร้อมข้อความตั้งต้น (ไม่ใช่ข้อความที่ส่งทันที)
+  const fill = buildQuickReplyMessage('x', [{ label: '➕ เพิ่ม', fillIn: 'เพิ่มงาน ' }]).quickReply.items[0].action;
+  assert.deepEqual(fill, { type: 'postback', label: '➕ เพิ่ม', data: 'action=noop', inputOption: 'openKeyboard', fillInText: 'เพิ่มงาน ' });
   assert.equal(buildQuickReplyMessage('x', [], { cancel: true }).quickReply, undefined); // ไม่มีปุ่มอื่น ไม่เปิดปุ่มยกเลิกลอยๆ
 });
 

@@ -19,6 +19,9 @@ async function guarded(fn) {
   }
 }
 
+// ปุ่มเปิดคีย์บอร์ดพร้อม "เพิ่มร้าน " — วางลิงก์/พิมพ์ชื่อต่อได้ทันที เพิ่มต่อเนื่องได้เรื่อยๆ
+const ADD_MORE = { label: '➕ เพิ่มร้านอีก', fillIn: 'เพิ่มร้าน ' };
+
 const norm = (s) => String(s).toLowerCase().replace(/\s+/g, '');
 const withLink = (r) => (r.url ? `\n📍 ${r.url}` : '');
 
@@ -44,19 +47,19 @@ function handleAddRestaurant(input, lineUserId) {
     if (link) {
       place = await resolveMapsPlace(link);
       name = typed || place?.name || '';
-      if (!name) return { type: 'error', reply: `อ่านชื่อร้านจากลิงก์ไม่ได้ ระบุชื่อต่อท้ายด้วย เช่น เพิ่มร้าน ต้มยำกุ้ง ${link}` };
+      if (!name) return { type: 'error', reply: `อ่านชื่อร้านจากลิงก์ไม่ได้ ระบุชื่อต่อท้ายด้วย เช่น เพิ่มร้าน ต้มยำกุ้ง ${link}`, quickReplies: [{ label: '➕ ลองใหม่', fillIn: `เพิ่มร้าน ชื่อร้าน ${link}` }] };
     }
     if (!name) return { type: 'error', reply: `ระบุลิงก์หรือชื่อร้านด้วย — ${usage}` };
 
     const existing = await listRestaurants();
     const dup = existing.find((r) => norm(r.name) === norm(name));
-    if (dup) return { type: 'noop', reply: `มีร้าน "${dup.name}" อยู่ในลิสต์แล้ว`, quickReplies: [{ label: '🎲 สุ่มร้าน', text: 'สุ่มร้าน' }] };
+    if (dup) return { type: 'noop', reply: `มีร้าน "${dup.name}" อยู่ในลิสต์แล้ว`, quickReplies: [ADD_MORE, { label: '🎲 สุ่มร้าน', text: 'สุ่มร้าน' }] };
 
     const r = await addRestaurant({ name, url: place?.url || link || null, lat: place?.lat ?? null, lng: place?.lng ?? null, lineUserId });
     return {
       type: 'restaurant_added',
       reply: `🍽 เพิ่มร้าน: ${r.name}${withLink(r)}\nตอนนี้มี ${existing.length + 1} ร้านในลิสต์`,
-      quickReplies: [{ label: '🎲 สุ่มร้าน', text: 'สุ่มร้าน' }, { label: '📋 ดูร้านทั้งหมด', text: 'ร้านอาหาร' }],
+      quickReplies: [ADD_MORE, { label: '🎲 สุ่มร้าน', text: 'สุ่มร้าน' }, { label: '📋 ดูร้านทั้งหมด', text: 'ร้านอาหาร' }],
     };
   });
 }
