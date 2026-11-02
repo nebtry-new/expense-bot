@@ -45,6 +45,7 @@ async function resetData() {
   carProfile = null;
   global._unrecognized = [];
   global._nlLog = [];
+  global._notifications = [];
   resetState.pendingReset = false;
 }
 
@@ -720,7 +721,7 @@ async function scheduleNotification({ type = 'manual', message, scheduledAt, lin
     return data?.[0] || null;
   }
   const n = {
-    id: `notif_${Date.now()}`,
+    id: `notif_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
     type,
     message,
     scheduled_at: scheduledAt.toISOString(),
@@ -761,7 +762,39 @@ async function markNotificationSent(id) {
   if (n) n.sent_at = new Date().toISOString();
 }
 
-async function listPendingNotifications() {
+// จองแจ้งเตือนก่อนส่ง (atomic) — ถ้ามีตัวรันสองตัวพร้อมกัน มีแค่ตัวเดียวที่จองได้ จึงไม่ส่งซ้ำ
+async function claimNotification(id) {
+  const now = new Date().toISOString();
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .update({ sent_at: now })
+      .eq('id', id)
+      .is('sent_at', null)
+      .select('id');
+    if (error) throw error;
+    return Boolean(data?.length);
+  }
+  const n = (global._notifications || []).find((x) => x.id === id);
+  if (!n || n.sent_at) return false;
+  n.sent_at = now;
+  return true;
+}
+
+// ส่งไม่สำเร็จ → คืนสถานะให้รอบถัดไปลองใหม่
+async function releaseNotification(id) {
+  if (supabase) {
+    const { error } = await supabase.from('notifications').update({ sent_at: null }).eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  const n = (global._notifications || []).find((x) => x.id === id);
+  if (n) n.sent_at = null;
+}
+
+// lineUserId: แสดงเฉพาะของตัวเอง + ของ "ทั้งคู่" (line_user_id = null) — ไม่ระบุ = ทั้งหมด
+async function listPendingNotifications({ lineUserId } = {}) {
+  let rows;
   if (supabase) {
     const { data, error } = await supabase
       .from('notifications')
@@ -769,11 +802,14 @@ async function listPendingNotifications() {
       .is('sent_at', null)
       .order('scheduled_at', { ascending: true });
     if (error) throw error;
-    return data || [];
+    rows = data || [];
+  } else {
+    rows = (global._notifications || [])
+      .filter((n) => !n.sent_at)
+      .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
   }
-  return (global._notifications || [])
-    .filter((n) => !n.sent_at)
-    .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+  if (!lineUserId) return rows;
+  return rows.filter((n) => !n.line_user_id || n.line_user_id === lineUserId);
 }
 
 async function cancelNotificationById(id) {
@@ -828,6 +864,8 @@ module.exports = {
   scheduleNotification,
   getPendingNotifications,
   markNotificationSent,
+  claimNotification,
+  releaseNotification,
   listPendingNotifications,
   cancelNotificationById,
   getDbStatus,

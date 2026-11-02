@@ -348,12 +348,12 @@ async function handleTextMessage(text, userContext = {}) {
   }
 
   if (/^ดูแจ้งเตือน$/i.test(normalized)) {
-    return handleListNotifications();
+    return handleListNotifications(lineUserId);
   }
 
   const cancelNotifMatch = normalized.match(/^ยกเลิกแจ้งเตือน\s+(.+)$/i);
   if (cancelNotifMatch) {
-    return handleCancelNotification(cancelNotifMatch[1].trim());
+    return handleCancelNotification(cancelNotifMatch[1].trim(), lineUserId);
   }
 
   const setCarMatch = normalized.match(/^ตั้งค่ารถ\s*(.+)$/i);

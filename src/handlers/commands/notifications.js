@@ -79,27 +79,27 @@ async function handleScheduleNotification(input, lineUserId) {
   };
 }
 
-async function handleListNotifications() {
-  const list = await listPendingNotifications();
+async function handleListNotifications(lineUserId) {
+  const list = await listPendingNotifications({ lineUserId });
   if (!list.length) {
     return { type: 'notifications', reply: 'ยังไม่มีแจ้งเตือนที่รออยู่\nตั้งได้ด้วย: แจ้งเตือน 25 ธ.ค. 09:00 ข้อความ' };
   }
 
   const lines = ['⏰ แจ้งเตือนที่รออยู่\n'];
   list.forEach((n, i) => {
-    lines.push(`${i + 1}. ${toLocalDisplay(new Date(n.scheduled_at))} — ${n.message}`);
+    lines.push(`${i + 1}. ${toLocalDisplay(new Date(n.scheduled_at))} — ${n.message}${n.line_user_id ? '' : ' (ทั้งคู่)'}`);
   });
   lines.push('\nยกเลิกด้วย: ยกเลิกแจ้งเตือน [เลข]');
   return { type: 'notifications', reply: lines.join('\n') };
 }
 
-async function handleCancelNotification(input) {
+async function handleCancelNotification(input, lineUserId) {
   const num = parseInt(input.trim());
   if (isNaN(num) || num < 1) {
     return { type: 'error', reply: 'ระบุหมายเลขแจ้งเตือน เช่น ยกเลิกแจ้งเตือน 1' };
   }
 
-  const list = await listPendingNotifications();
+  const list = await listPendingNotifications({ lineUserId });
   const target = list[num - 1];
   if (!target) {
     return { type: 'error', reply: `ไม่พบแจ้งเตือนหมายเลข ${num}` };

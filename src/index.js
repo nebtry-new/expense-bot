@@ -52,12 +52,15 @@ async function sendReplyMessage(event, textOrMessage) {
   }
 }
 
+// คืน true เมื่อส่งสำเร็จ (ผู้เรียกส่วนใหญ่ไม่สนผล แต่ตัวส่งแจ้งเตือนต้องรู้)
 async function sendPushMessage(toUserId, text) {
-  if (!lineClient || !toUserId) return;
+  if (!lineClient || !toUserId) return false;
   try {
     await lineClient.pushMessage({ to: toUserId, messages: [{ type: 'text', text }] });
+    return true;
   } catch (error) {
     console.error('LINE pushMessage failed:', error?.response?.data || error.message || error);
+    return false;
   }
 }
 
@@ -232,10 +235,34 @@ app.post('/webhook', async (req, res) => {
   return res.json({ ok: true, handled: replies.length, replies });
 });
 
+// ตัวรันแจ้งเตือนในตัวเซิร์ฟเวอร์ — ไม่ต้องพึ่ง cron ภายนอก (endpoint /internal/run-notifications ยังใช้ได้ และจองแบบ atomic ไม่ส่งซ้ำ)
+// ปิดได้ด้วย NOTIFICATION_POLL_MS=0
+function startNotificationScheduler() {
+  const intervalMs = Number(process.env.NOTIFICATION_POLL_MS ?? 60000);
+  if (!(intervalMs > 0)) return null;
+
+  let running = false;
+  const timer = setInterval(async () => {
+    if (running) return;
+    running = true;
+    try {
+      const result = await runPendingNotifications(sendPushMessage);
+      if (result.sent || result.failed) console.log('NOTIFICATIONS_RUN', result);
+    } catch (error) {
+      console.error('NOTIFICATIONS_RUN_FAILED', error.message);
+    } finally {
+      running = false;
+    }
+  }, intervalMs);
+  timer.unref?.();
+  return timer;
+}
+
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`Expense bot listening on port ${PORT}`);
+    startNotificationScheduler();
   });
 }
 
-module.exports = { app };
+module.exports = { app, startNotificationScheduler };
