@@ -22,9 +22,6 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "devDependencies": {
-    "localtunnel": "^2.0.2"
-  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",
     "@line/bot-sdk": "^11.2.0",
