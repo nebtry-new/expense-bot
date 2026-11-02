@@ -221,6 +221,6 @@ test('เพิ่มงาน/วันสำคัญของวันนี�
   await handleTextMessage('เพิ่มงาน ทดสอบวันนี้ วันนี้', u1);
   const r = recorder();
   const result = await runPlannerReminders(r.fn, new Date());
-  if (today.hour >= 9) assert.deepEqual(result, { events: 0, todos: 0 }); // ก่อน 09:00 ก็ไม่ส่งเช่นกัน
+  if (today.hour >= 9) assert.deepEqual(result, { events: 0, todos: 0, gifts: 0 }); // ก่อน 09:00 ก็ไม่ส่งเช่นกัน
   assert.equal(r.sent.length, 0);
 });

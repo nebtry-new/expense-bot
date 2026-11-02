@@ -25,6 +25,8 @@ const COMMANDS = {
   cancel_notification: { needs: 'number', text: (a) => `ยกเลิกแจ้งเตือน ${a.number}` },
   list_events: { text: () => 'วันสำคัญ' },
   list_todos: { text: () => 'งาน' },
+  random_restaurant: { text: (a) => `สุ่มร้าน${a.keyword ? ` ${a.keyword}` : ''}` },
+  partner_gifts: { text: () => 'ของขวัญแฟน' },
   help: { text: () => 'help' },
 };
 

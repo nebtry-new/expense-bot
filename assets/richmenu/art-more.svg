@@ -31,12 +31,11 @@
 <text x="416.5" y="1536" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">หาจุดชาร์จ EV</text>
 <rect x="859" y="944" width="782" height="716" rx="56" fill="#FFFDF7" stroke="#8FD3B6" stroke-width="8"/>
 <circle cx="1250" cy="1202" r="172" fill="#BFE8D4"/>
-<g transform="translate(1250 1202) scale(1.3)"><rect x="-70" y="-56" width="140" height="130" rx="16" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11"/>
-    <path d="M-70 -14h140" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M-34 -78v36M34 -78v36" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="-44" y="12" width="26" height="22" rx="5" fill="#3FA882"/><rect x="-13" y="12" width="26" height="22" rx="5" fill="#3FA882"/><rect x="18" y="12" width="26" height="22" rx="5" fill="#3FA882"/>
-    <rect x="-44" y="44" width="26" height="18" rx="5" fill="#8FD3B6"/><rect x="-13" y="44" width="26" height="18" rx="5" fill="#8FD3B6"/></g>
-<text x="1250" y="1536" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">สรุปเดือนนี้</text>
+<g transform="translate(1250 1202) scale(1.3)"><circle cx="0" cy="4" r="46" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11"/>
+    <circle cx="0" cy="4" r="22" fill="#3FA882"/>
+    <path d="M-82 -62v38a14 14 0 0 0 28 0v-38M-68 -62v128M-82 -62v0" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M76 66V-62c-26 16-28 54 0 70" fill="none" stroke="#5C3D2E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="1250" y="1536" font-family="'Sarabun','Sarabun','Thonburi',sans-serif" font-size="100" font-weight="700" text-anchor="middle" fill="#5C3D2E">ร้านอาหาร</text>
 <rect x="1693" y="944" width="781" height="716" rx="56" fill="#FFFDF7" stroke="#8FD3B6" stroke-width="8"/>
 <circle cx="2083.5" cy="1202" r="172" fill="#BFE8D4"/>
 <g transform="translate(2083.5 1202) scale(1.3)"><circle cx="0" cy="0" r="74" fill="#FFFDF7" stroke="#5C3D2E" stroke-width="11"/>

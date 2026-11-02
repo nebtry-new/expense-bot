@@ -75,7 +75,7 @@ test('rich menu: tab switching targets the two aliases and every action is well-
 test('rich menu: message buttons send commands the bot really understands', async () => {
   await setup();
   const sent = Object.values(BUTTONS).flat().map((b) => b.action).filter((a) => a.type === 'message').map((a) => a.text);
-  assert.deepEqual(sent.sort(), ['help', 'ลบรายการ', 'สรุป', 'สรุปยอดเดือนนี้'].sort());
+  assert.deepEqual(sent.sort(), ['help', 'ลบรายการ', 'สรุป'].sort());
 
   __setInterpreter(async () => { throw new Error('no model for fixed commands'); });
   for (const text of sent) {
@@ -230,7 +230,7 @@ test('menu_todo / menu_events: empty state offers the add button; real lists add
   const emptyTodo = await handleMenuPostback('action=menu_todo', u1);
   assertValidQuickReply(emptyTodo);
   assert.deepEqual(pbData(emptyTodo), ['เพิ่มงาน ']);
-  const emptyEvents = await handleMenuPostback('action=menu_events', u1);
+  const emptyEvents = await handleMenuPostback('action=menu_events_list', u1);
   assert.deepEqual(pbData(emptyEvents), ['เพิ่มวันสำคัญ ']);
 
   for (let i = 1; i <= 15; i += 1) await handleTextMessage(`เพิ่มงาน งานที่ ${i}`, u1);
@@ -245,10 +245,42 @@ test('menu_todo / menu_events: empty state offers the add button; real lists add
   const done = await handleTextMessage('เสร็จ 1', u1);
   assert.equal(done.type, 'todo_done');
 
-  const ev = await handleMenuPostback('action=menu_events', u1);
+  const ev = await handleMenuPostback('action=menu_events_list', u1);
   assertValidQuickReply(ev);
   assert.deepEqual(pbData(ev), ['เพิ่มวันสำคัญ ', 'ลบวันสำคัญ 1']);
   assert.ok(ev.text.includes('วันเกิดแฟน'));
+});
+
+test('menu_events is a sub-menu (events + gifts); restaurants have their own button, not under trips', async () => {
+  await setup();
+  const hub = await handleMenuPostback('action=menu_events', u1);
+  assertValidQuickReply(hub);
+  assert.deepEqual(pbData(hub), [
+    'action=menu_events_list', 'เพิ่มวันสำคัญ ', 'ของขวัญแฟน', 'ของที่อยากได้', 'อยากได้ ', 'ให้ของขวัญแฟน ', 'ประวัติของขวัญ',
+  ]);
+  // ทุกข้อความที่ปุ่มส่งต้องเป็นคำสั่งที่บอตเข้าใจ (ไม่ใช่ error)
+  for (const text of ['ของขวัญแฟน', 'ของที่อยากได้', 'ประวัติของขวัญ']) {
+    const r = await handleTextMessage(text, u1);
+    assert.ok(r.reply, text);
+    assert.notEqual(r.type, 'error', `${text} → ${r.reply}`);
+  }
+
+  const trip = await handleMenuPostback('action=menu_trip', u1);
+  assertValidQuickReply(trip);
+  assert.ok(!pbData(trip).includes('สุ่มร้าน')); // ร้านอาหารไม่เกี่ยวกับทริป
+
+  const empty = await handleMenuPostback('action=menu_restaurant', u1);
+  assertValidQuickReply(empty);
+  assert.ok(empty.text.includes('ยังไม่มีร้านในลิสต์'));
+  assert.deepEqual(pbData(empty), ['สุ่มร้าน', 'เพิ่มร้าน ', 'ร้านอาหาร']);
+  assert.equal((await handleTextMessage('สุ่มร้าน', u1)).type, 'noop'); // ยังไม่มีร้าน ไม่ error
+
+  await handleTextMessage('เพิ่มร้าน ราเมน', u1);
+  await handleTextMessage('เพิ่มร้าน ส้มตำ', u1);
+  await handleTextMessage('ร้านอาหาร', u1);
+  await handleTextMessage('ร้านไปแล้ว 1', u1);
+  const some = await handleMenuPostback('action=menu_restaurant', u1);
+  assert.ok(some.text.includes('ในลิสต์ 2 ร้าน (ยังไม่ได้ไป 1)'), some.text);
 });
 
 // ---------- คำถามจากเมนูไม่ต้องใช้โมเดล ----------

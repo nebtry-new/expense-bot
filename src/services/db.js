@@ -39,6 +39,9 @@ async function resetData() {
     await supabase.from('payment_confirmations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('special_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('todos').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('restaurants').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('wishlist_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('gift_history').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   }
 
   users.length = 0;
@@ -55,6 +58,9 @@ async function resetData() {
   global._paymentConfirmations = [];
   global._events = [];
   global._todos = [];
+  global._restaurants = [];
+  global._wishlist = [];
+  global._gifts = [];
   resetState.pendingReset = false;
 }
 
@@ -1007,6 +1013,88 @@ async function deleteTodo(id) {
 
 const markTodoReminded = (id, key) => appendReminderKey('todos', () => global._todos, id, key);
 
+// ---- Sprint 4: ร้านอาหาร + ของขวัญ (migration_013) ----
+const toRestaurant = (row) => (row ? {
+  id: row.id, name: row.name, url: row.url || null, lat: row.lat ?? null, lng: row.lng ?? null,
+  addedByLineUserId: row.added_by_line_user_id || null, visitedAt: row.visited_at || null, createdAt: row.created_at,
+} : null);
+const toWish = (row) => (row ? {
+  id: row.id, ownerLineUserId: row.owner_line_user_id, title: row.title,
+  price: row.price == null ? null : Number(row.price), givenAt: row.given_at || null, createdAt: row.created_at,
+} : null);
+const toGift = (row) => (row ? {
+  id: row.id, giverLineUserId: row.giver_line_user_id, recipientLineUserId: row.recipient_line_user_id,
+  title: row.title, price: row.price == null ? null : Number(row.price), createdAt: row.created_at,
+} : null);
+
+// แทรก/ดึง/ลบแบบทั่วไป (ใช้ Supabase เมื่อมี ไม่งั้นใช้หน่วยความจำ global[memKey])
+async function insertRow(table, memKey, prefix, row) {
+  if (supabase) {
+    const { data, error } = await supabase.from(table).insert(row).select();
+    if (error) throw error;
+    return data[0];
+  }
+  const mem = { id: memId(prefix), ...row, created_at: new Date().toISOString() };
+  (global[memKey] = global[memKey] || []).push(mem);
+  return mem;
+}
+
+async function selectRows(table, memKey) {
+  if (supabase) {
+    const { data, error } = await supabase.from(table).select('*').order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  }
+  return [...(global[memKey] || [])];
+}
+
+async function deleteRow(table, memKey, id) {
+  if (supabase) {
+    const { data, error } = await supabase.from(table).delete().eq('id', id).select('id');
+    if (error) throw error;
+    return Boolean(data?.length);
+  }
+  const idx = (global[memKey] || []).findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  global[memKey].splice(idx, 1);
+  return true;
+}
+
+// ตั้งค่าคอลัมน์เวลาแบบ atomic เฉพาะแถวที่ยังเป็น null — คืนแถวถ้าเพิ่งตั้ง, null ถ้าไม่พบ/ตั้งไปแล้ว
+async function stampOnce(table, memKey, id, column) {
+  const now = new Date().toISOString();
+  if (supabase) {
+    const { data, error } = await supabase.from(table).update({ [column]: now }).eq('id', id).is(column, null).select();
+    if (error) throw error;
+    return data?.[0] || null;
+  }
+  const r = (global[memKey] || []).find((x) => x.id === id);
+  if (!r || r[column]) return null;
+  r[column] = now;
+  return r;
+}
+
+const addRestaurant = async ({ name, url = null, lat = null, lng = null, lineUserId = null }) =>
+  toRestaurant(await insertRow('restaurants', '_restaurants', 'rest', { name, url, lat, lng, added_by_line_user_id: lineUserId, visited_at: null }));
+const listRestaurants = async () => (await selectRows('restaurants', '_restaurants')).map(toRestaurant);
+const deleteRestaurant = (id) => deleteRow('restaurants', '_restaurants', id);
+const markRestaurantVisited = async (id) => toRestaurant(await stampOnce('restaurants', '_restaurants', id, 'visited_at'));
+
+const addWishItem = async ({ ownerLineUserId, title, price = null }) =>
+  toWish(await insertRow('wishlist_items', '_wishlist', 'wish', { owner_line_user_id: ownerLineUserId, title, price, given_at: null }));
+const listWishItems = async ({ ownerLineUserId = null, includeGiven = false } = {}) =>
+  (await selectRows('wishlist_items', '_wishlist')).map(toWish)
+    .filter((w) => (!ownerLineUserId || w.ownerLineUserId === ownerLineUserId) && (includeGiven || !w.givenAt));
+const deleteWishItem = (id) => deleteRow('wishlist_items', '_wishlist', id);
+const markWishGiven = async (id) => toWish(await stampOnce('wishlist_items', '_wishlist', id, 'given_at'));
+
+const addGift = async ({ giverLineUserId, recipientLineUserId, title, price = null }) =>
+  toGift(await insertRow('gift_history', '_gifts', 'gift', { giver_line_user_id: giverLineUserId, recipient_line_user_id: recipientLineUserId, title, price }));
+const listGifts = async ({ recipientLineUserId = null } = {}) =>
+  (await selectRows('gift_history', '_gifts')).map(toGift)
+    .filter((g) => !recipientLineUserId || g.recipientLineUserId === recipientLineUserId)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
 // ---- สถานะรอยืนยันรับเงิน (จ่ายแล้ว → รับแล้ว) เก็บใน DB เพื่อไม่หายตอนเซิร์ฟเวอร์รีสตาร์ท ----
 const toPaymentConfirmation = (row) => (row ? {
   id: row.id,
@@ -1290,6 +1378,16 @@ module.exports = {
   completeTodo,
   deleteTodo,
   markTodoReminded,
+  addRestaurant,
+  listRestaurants,
+  deleteRestaurant,
+  markRestaurantVisited,
+  addWishItem,
+  listWishItems,
+  deleteWishItem,
+  markWishGiven,
+  addGift,
+  listGifts,
   saveBillingRequest,
   listOpenBillingRequests,
   markBillingReminded,

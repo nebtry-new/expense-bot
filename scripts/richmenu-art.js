@@ -62,11 +62,10 @@ const ICONS = {
     <rect x="-72" y="-44" width="144" height="38" rx="12" fill="${C.mintDark}" stroke="${C.brown}" stroke-width="11"/>
     <path d="M0 -44V70" ${S}/>
     <path d="M0 -44c-26-40-62-30-46-8M0 -44c26-40 62-30 46-8" ${S}/>`,
-  monthly: () => `<rect x="-70" y="-56" width="140" height="130" rx="16" fill="${C.card}" stroke="${C.brown}" stroke-width="11"/>
-    <path d="M-70 -14h140" ${S}/>
-    <path d="M-34 -78v36M34 -78v36" ${S}/>
-    <rect x="-44" y="12" width="26" height="22" rx="5" fill="${C.mintDark}"/><rect x="-13" y="12" width="26" height="22" rx="5" fill="${C.mintDark}"/><rect x="18" y="12" width="26" height="22" rx="5" fill="${C.mintDark}"/>
-    <rect x="-44" y="44" width="26" height="18" rx="5" fill="${C.mintLine}"/><rect x="-13" y="44" width="26" height="18" rx="5" fill="${C.mintLine}"/>`,
+  restaurant: () => `<circle cx="0" cy="4" r="46" fill="${C.card}" stroke="${C.brown}" stroke-width="11"/>
+    <circle cx="0" cy="4" r="22" fill="${C.mintDark}"/>
+    <path d="M-82 -62v38a14 14 0 0 0 28 0v-38M-68 -62v128M-82 -62v0" ${S}/>
+    <path d="M76 66V-62c-26 16-28 54 0 70" ${S}/>`,
   help: () => `<circle cx="0" cy="0" r="74" fill="${C.card}" stroke="${C.brown}" stroke-width="11"/>
     <path d="M-26 -24a26 26 0 1 1 40 22c-10 7-14 12-14 24" ${S}/>
     <circle cx="0" cy="52" r="8" fill="${C.mintDark}"/>`,

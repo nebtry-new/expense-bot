@@ -1,6 +1,6 @@
 // ตอบ postback จาก Rich menu (action=menu_*) ด้วยข้อความ + quick reply ให้เลือกขั้นต่อไป
 // ทุกตัวเลือกเป็น "ข้อความคำสั่งเดิม" จึงผ่าน flow/ขั้นตอนยืนยันเดิมทั้งหมด
-const { getTrips, getTripPlaces, markTripPlaceVisitedById, deleteTripPlaceById } = require('../../services/db');
+const { getTrips, listRestaurants, getTripPlaces, markTripPlaceVisitedById, deleteTripPlaceById } = require('../../services/db');
 const { handleListNotes, handleListPlaces } = require('./trip');
 const { handleListTodos, handleListEvents } = require('./planner');
 const { answerForUser } = require('./nl-dispatch');
@@ -175,11 +175,34 @@ async function handleMenuPostback(data, userContext = {}) {
   }
 
   // งาน (To-Do ร่วมกัน) / วันสำคัญ: แสดงลิสต์จริง + ปุ่มจัดการจากคำสั่งเดิม + ปุ่มเปิดคีย์บอร์ดเพิ่มรายการ
-  if (action === 'menu_todo' || action === 'menu_events') {
+  if (action === 'menu_events') {
+    return withQuickReplies('🎉 วันสำคัญ & 🎁 ของขวัญ\nวันสำคัญเตือนทุกปี และก่อนวันสำคัญของแฟน บอตจะแอบบอก wishlist ให้', [
+      postbackItem('📅 ดูวันสำคัญ', 'action=menu_events_list', 'วันสำคัญ'),
+      fillItem('➕ เพิ่มวันสำคัญ', 'เพิ่มวันสำคัญ '),
+      sayItem('🎁 ของขวัญแฟน', 'ของขวัญแฟน'),
+      sayItem('✨ ของที่ฉันอยากได้', 'ของที่อยากได้'),
+      fillItem('➕ อยากได้…', 'อยากได้ '),
+      fillItem('🎀 ให้ของขวัญแฟน', 'ให้ของขวัญแฟน '),
+      sayItem('📜 ประวัติของขวัญ', 'ประวัติของขวัญ'),
+    ]);
+  }
+
+  if (action === 'menu_todo' || action === 'menu_events_list') {
     const todo = action === 'menu_todo';
     const result = await (todo ? handleListTodos : handleListEvents)(userContext.lineUserId || 'unknown');
     const add = todo ? fillItem('➕ เพิ่มงาน', 'เพิ่มงาน ') : fillItem('➕ เพิ่มวันสำคัญ', 'เพิ่มวันสำคัญ ');
     return withQuickReplies(result.reply, [add, ...(result.quickReplies || []).map((q) => sayItem(q.label, q.text))]);
+  }
+
+  if (action === 'menu_restaurant') {
+    const all = await listRestaurants().catch(() => []); // ยังไม่รัน migration_013 → ถือว่ายังไม่มีร้าน (คำสั่งจะบอกเอง)
+    const left = all.filter((r) => !r.visitedAt).length;
+    const status = all.length ? `ในลิสต์ ${all.length} ร้าน (ยังไม่ได้ไป ${left})` : 'ยังไม่มีร้านในลิสต์';
+    return withQuickReplies(`🍽 ร้านอาหาร\n${status}\nเพิ่มร้าน: แตะ ➕ แล้ววางลิงก์ Google Maps ต่อท้าย`, [
+      sayItem('🎲 สุ่มร้าน', 'สุ่มร้าน'),
+      fillItem('➕ เพิ่มร้าน', 'เพิ่มร้าน '),
+      sayItem('📋 ร้านทั้งหมด', 'ร้านอาหาร'),
+    ]);
   }
 
   if (action === 'menu_ev') {

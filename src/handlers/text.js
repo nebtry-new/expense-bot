@@ -7,6 +7,8 @@ const { handleSlipOverride } = require('./commands/slip');
 const { handleCreateTrip, handleListTrips, handleTripSummary, handleSetTripBillable, handleAddPlace, handleDeletePlace, handleMarkVisited, handleListPlaces, handleTripRoute, handleAddNote, handleListNotes } = require('./commands/trip');
 const { handleShowDatetimePicker, handleScheduleFromDatetime, handleScheduleNotification, handleListNotifications, handleCancelNotification, handleNotificationStatus } = require('./commands/notifications');
 const { handleAddEvent, handleListEvents, handleDeleteEvent, handleAddTodo, handleListTodos, handleCompleteTodo, handleDeleteTodo } = require('./commands/planner');
+const { handleAddRestaurant, handleListRestaurants, handleRandomRestaurant, handleVisitedRestaurant, handleDeleteRestaurant } = require('./commands/restaurants');
+const { handleAddWish, handleMyWishlist, handleDeleteWish, handlePartnerGifts, handleGiveGift, handleGiftHistory } = require('./commands/gifts');
 const { handleSetCarProfile, handleMapsLinkForEv, handleMapsDestinationForLocation, handleEvBatteryReply, extractMapsUrl } = require('./commands/ev');
 const { evRouteState } = require('./state');
 const { normalizeThaiNumbers } = require('../utils/thai-numbers');
@@ -90,6 +92,17 @@ const HELP_TEXT = [
   '• ทำเสร็จ: เสร็จ [เลข] (หลายข้อ: เสร็จ 1 3) · ลบ: ลบงาน [เลข]',
   '• งานที่มีกำหนด จะเตือนทั้งคู่ 1 วันก่อนและวันครบกำหนด',
   '',
+  '━━ 🍽 ร้านอาหาร (สุ่มเลือก) ━━',
+  '• เพิ่มร้าน: เพิ่มร้าน [ลิงก์ Google Maps] (ใส่ชื่อเองได้: เพิ่มร้าน ต้มยำกุ้ง [ลิงก์])',
+  '• สุ่ม: สุ่มร้าน (หรือ สุ่มร้าน ญี่ปุ่น) → ไปกินแล้ว',
+  '• ดูทั้งหมด: ร้านอาหาร · ไปแล้ว: ร้านไปแล้ว [เลข] · ลบ: ลบร้าน [เลข]',
+  '',
+  '━━ 🎁 ของขวัญ ━━',
+  '• จดของที่อยากได้: อยากได้ หูฟังไร้สาย 3500 · ดู: ของที่อยากได้ · ลบ: ลบของที่อยากได้ [เลข]',
+  '• ดู wishlist ของแฟน + ที่เคยให้แล้ว: ของขวัญแฟน',
+  '• ให้แล้ว: ให้ของขวัญแฟน นาฬิกา 2500 (หรือ ให้ของขวัญแฟน [เลข] จาก wishlist) — เตือนถ้าเคยให้ของคล้ายกัน',
+  '• ประวัติ: ประวัติของขวัญ · ใกล้วันสำคัญของแฟน บอตจะแอบบอก wishlist ให้',
+  '',
   '━━ 🔌 EV ━━',
   '• ตั้งค่าระยะรถ: ตั้งค่ารถ 400 กม.',
   '• หาจุดชาร์จ (แชร์ link): ส่ง Google Maps directions link แล้วบอกแบต %',
@@ -111,7 +124,7 @@ const MAPS_URL_RE = /https?:\/\/(www\.google\.com\/maps|maps\.app\.goo\.gl|goo\.
 // Commands that never belong to a free-text flow (datetime picker reply)
 // ลบ 2 / ลบ 1 3 5 / ลบ 1,3 / ลบ 1 และ 3 / ลบ 2-4
 const DELETE_PICK_RE = /^ลบ\s*(\d+(?:\s*(?:-|ถึง)\s*\d+)?(?:(?:\s*,\s*|\s+และ\s+|\s+)\d+(?:\s*(?:-|ถึง)\s*\d+)?)*)$/i;
-const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+[\d\s,\-และถึง]*|ตรวจแจ้งเตือน|สถานะแจ้งเตือน|ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน|ดูงบ|จัดหมวด|วันสำคัญ|งาน|รายการงาน|todo)$|^(ตั้งงบ|ลบงบ|เพิ่มวันสำคัญ|ลบวันสำคัญ|เพิ่มงาน|ลบงาน|เสร็จ|สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
+const COMMAND_RE = /^(help|ช่วยเหลือ|manual|คู่มือ|reset-all|reset-confirm|ผู้ใช้|users|รายชื่อผู้ใช้|รับแล้ว|ยืนยันรับเงิน|รับเงินแล้ว|ได้รับแล้ว|เงินเข้าแล้ว|ใช่|yes|ok|เรียกเก็บเงิน|สรุป|จ่ายแล้ว|โอนแล้ว|ยกเลิกรายการล่าสุด|ยกเลิกรายการ|ยกเลิกล่าสุด|undo|ลบรายการ|ลบ\s*\d+[\d\s,\-และถึง]*|ตรวจแจ้งเตือน|สถานะแจ้งเตือน|ข้อความที่ไม่เข้าใจ|ดูข้อความที่ไม่เข้าใจ|สรุปยอดเดือนนี้|สรุปเดือนนี้|ค่าใช้จ่ายเดือนนี้|ทริป|trips|รายการทริป|แจ้งเตือนใหม่|ดูแจ้งเตือน|ดูงบ|จัดหมวด|วันสำคัญ|งาน|รายการงาน|todo|ร้านอาหาร|ไปกินแล้ว|ของที่อยากได้|ของขวัญแฟน|ประวัติของขวัญ)$|^(ตั้งงบ|ลบงบ|เพิ่มร้าน|สุ่มร้าน|ร้านไปแล้ว|ลบร้าน|อยากได้|ลบของที่อยากได้|ให้ของขวัญแฟน|เพิ่มวันสำคัญ|ลบวันสำคัญ|เพิ่มงาน|ลบงาน|เสร็จ|สร้างทริป|สรุปทริป|ปิดทริป|เปิดทริป|เพิ่มที่|ลบที่|ที่เที่ยว|เส้นทางทริป|โน้ตทริป|ตั้งค่ารถ|ยกเลิกแจ้งเตือน|ลงทะเบียน|เปลี่ยนชื่อ|terminate\s+user|restore\s+user)/i;
 
 // ประโยคที่บอกว่าใครจ่าย/เลี้ยงใคร parser เดิมอ่านไม่ออก (มันเห็นแค่ "ชื่อ + ตัวเลข") → ให้ Claude ตีความก่อน
 const NL_CUE_RE = /(ออกให้|เลี้ยง|จ่ายแทน|แฟนออก|แฟนจ่าย|ออกค่า|จ่ายให้|โอนให้|ยืม|คืน|ทด(?:ให้|ไว้|ก่อน)|สำรอง|ฝากจ่าย|ฝากซื้อ|ต้องคืน|ขอคืน)/;
@@ -375,6 +388,27 @@ async function handleTextMessage(text, userContext = {}) {
   if (listNotesMatch) {
     return handleListNotes(listNotesMatch[1].trim());
   }
+
+  const addRestMatch = normalized.match(/^เพิ่มร้าน\s*([\s\S]+)$/i);
+  if (addRestMatch) return handleAddRestaurant(addRestMatch[1].trim(), lineUserId);
+  if (/^ร้านอาหาร$/i.test(normalized)) return handleListRestaurants(lineUserId);
+  const randRestMatch = normalized.match(/^สุ่มร้าน(?:\s+(.+))?$/i);
+  if (randRestMatch) return handleRandomRestaurant(randRestMatch[1]?.trim(), lineUserId);
+  if (/^ไปกินแล้ว$/i.test(normalized)) return handleVisitedRestaurant(null, lineUserId);
+  const visitedRestMatch = normalized.match(/^ร้านไปแล้ว\s*(\d[\d\s,\-ถึง]*)$/i);
+  if (visitedRestMatch) return handleVisitedRestaurant(visitedRestMatch[1], lineUserId);
+  const delRestMatch = normalized.match(/^ลบร้าน\s*(\d[\d\s,\-ถึง]*)$/i);
+  if (delRestMatch) return handleDeleteRestaurant(delRestMatch[1], lineUserId);
+
+  const addWishMatch = normalized.match(/^อยากได้\s*(.+)$/i);
+  if (addWishMatch) return handleAddWish(addWishMatch[1].trim(), lineUserId);
+  if (/^ของที่อยากได้$/i.test(normalized)) return handleMyWishlist(lineUserId);
+  const delWishMatch = normalized.match(/^ลบของที่อยากได้\s*(\d+)$/i);
+  if (delWishMatch) return handleDeleteWish(delWishMatch[1], lineUserId);
+  if (/^ของขวัญแฟน$/i.test(normalized)) return handlePartnerGifts(lineUserId);
+  const giveGiftMatch = normalized.match(/^ให้ของขวัญแฟน\s*(.+)$/i);
+  if (giveGiftMatch) return handleGiveGift(giveGiftMatch[1].trim(), lineUserId);
+  if (/^ประวัติของขวัญ$/i.test(normalized)) return handleGiftHistory(lineUserId);
 
   const addEventMatch = normalized.match(/^เพิ่มวันสำคัญ\s*(.+)$/i);
   if (addEventMatch) return handleAddEvent(addEventMatch[1].trim(), lineUserId);

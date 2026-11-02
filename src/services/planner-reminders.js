@@ -3,7 +3,7 @@
 // กันส่งซ้ำด้วย reminded_keys ในตาราง (รอดการรีสตาร์ท) · ส่งไม่สำเร็จจะไม่นับว่าเตือนแล้ว รอบหน้าลองใหม่
 // ข้อความวันจริงให้โมเดลเขียนให้น่ารัก (มี fallback เป็นข้อความสำเร็จรูปเสมอ — เครดิตหมด/API ล้มก็ยังเตือน)
 const Anthropic = require('@anthropic-ai/sdk');
-const { listSpecialEvents, markEventReminded, listOpenTodos, markTodoReminded, getUsers } = require('./db');
+const { listSpecialEvents, markEventReminded, listOpenTodos, markTodoReminded, getUsers, listWishItems, listGifts } = require('./db');
 const { localToday, daysBetween, nextOccurrence, fromIso } = require('../utils/planner-dates');
 const { MONTH_LABELS } = require('../utils/parse-date');
 
@@ -135,16 +135,73 @@ async function runTodoReminders(sendPushFn, now = new Date()) {
   return { sent };
 }
 
+// วันสำคัญนี้เป็นของใคร (เพื่อ hint ของขวัญให้อีกฝ่าย): ชื่อผู้ใช้ในชื่อวันสำคัญ → "แฟน" (แฟนของคนที่เพิ่ม) → "ฉัน/ผม/หนู" (คนที่เพิ่ม)
+// ไม่รู้ = null (เช่น วันครบรอบ ที่เป็นของทั้งคู่) → ไม่ส่ง hint
+function eventTarget(event, users) {
+  const title = String(event.title);
+  const named = users.filter((u) => u.displayName && title.includes(u.displayName));
+  if (named.length === 1) return named[0];
+  if (named.length > 1) return null;
+  const creator = users.find((u) => u.lineUserId === event.createdByLineUserId);
+  if (!creator) return null;
+  if (/แฟน|ที่รัก|เธอ/.test(title)) return users.find((u) => u.lineUserId !== creator.lineUserId) || null;
+  if (/ฉัน|ผม|หนู/.test(title)) return creator;
+  return null;
+}
+
+// hint ของขวัญ: 7 วัน / 1 วันก่อนวันสำคัญ ส่งให้ "อีกฝ่าย" พร้อม wishlist และของที่เคยให้ (กันซื้อซ้ำ)
+const GIFT_STAGES = [7, 1];
+async function runGiftHints(sendPushFn, now = new Date()) {
+  const today = localToday(now);
+  if (today.hour < reminderHour()) return { sent: 0 };
+
+  const users = (await getUsers()).filter((u) => u.lineUserId);
+  if (users.length !== 2) return { sent: 0 };
+
+  let sent = 0;
+  for (const event of await listSpecialEvents()) {
+    const occ = nextOccurrence(event.month, event.day, today);
+    const daysUntil = daysBetween(today, occ);
+    if (!GIFT_STAGES.includes(daysUntil)) continue;
+    const key = `${occ.y}:gift${daysUntil}`;
+    if (event.remindedKeys.includes(key)) continue;
+
+    const target = eventTarget(event, users);
+    if (!target) continue;
+    const giver = users.find((u) => u.lineUserId !== target.lineUserId);
+
+    const [wishes, gifts] = await Promise.all([listWishItems({ ownerLineUserId: target.lineUserId }), listGifts({ recipientLineUserId: target.lineUserId })]);
+    const price = (p) => (p == null ? '' : ` (฿${Number(p).toLocaleString('th-TH')})`);
+    const lines = [`🎁 ${daysUntil === 1 ? 'พรุ่งนี้' : `อีก ${daysUntil} วัน`}ถึง "${event.title}" (${occ.d} ${MONTH_LABELS[occ.m]}) — เตรียมของขวัญให้${target.displayName}หรือยัง?`];
+    lines.push(wishes.length
+      ? `✨ ที่${target.displayName}อยากได้:\n${wishes.slice(0, 5).map((w, i) => `${i + 1}. ${w.title}${price(w.price)}`).join('\n')}`
+      : `${target.displayName}ยังไม่ได้จด wishlist ลองถามดูนะ`);
+    if (gifts.length) lines.push(`📜 เคยให้ไปแล้ว (อย่าซื้อซ้ำ): ${gifts.slice(0, 5).map((g) => g.title).join(', ')}`);
+    lines.push('ซื้อแล้วพิมพ์: ให้ของขวัญแฟน [ชื่อของ] หรือดูทั้งหมด: ของขวัญแฟน');
+
+    if (await sendPushFn(giver.lineUserId, lines.join('\n'))) {
+      await markEventReminded(event.id, key);
+      sent += 1;
+    }
+  }
+  return { sent };
+}
+
 // ตารางอาจยังไม่ถูกสร้าง (ยังไม่รัน migration_012) → log แล้วข้าม ไม่ให้กระทบตัวรันแจ้งเตือนอื่น
 async function runPlannerReminders(sendPushFn, now = new Date()) {
-  const result = { events: 0, todos: 0 };
+  const result = { events: 0, todos: 0, gifts: 0 };
   try {
     result.events = (await runEventReminders(sendPushFn, now)).sent;
     result.todos = (await runTodoReminders(sendPushFn, now)).sent;
   } catch (error) {
     console.error('PLANNER_REMINDERS_FAILED', error?.message || error, '(ตรวจว่ารัน migration_012 แล้ว)');
   }
+  try {
+    result.gifts = (await runGiftHints(sendPushFn, now)).sent;
+  } catch (error) {
+    console.error('GIFT_HINTS_FAILED', error?.message || error, '(ตรวจว่ารัน migration_013 แล้ว)');
+  }
   return result;
 }
 
-module.exports = { runPlannerReminders, runEventReminders, runTodoReminders, stagesToSkipOnCreate, EVENT_STAGES, TODO_STAGES, reminderHour, __setGreetingWriter };
+module.exports = { runGiftHints, eventTarget, runPlannerReminders, runEventReminders, runTodoReminders, stagesToSkipOnCreate, EVENT_STAGES, TODO_STAGES, reminderHour, __setGreetingWriter };

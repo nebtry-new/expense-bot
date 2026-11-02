@@ -31,7 +31,7 @@ const BUTTONS = {
     { key: 'todo', title: '📋 งาน', action: post('งาน', 'action=menu_todo') },
     { key: 'events', title: '🎉 วันสำคัญ', action: post('วันสำคัญ', 'action=menu_events') },
     { key: 'ev', title: '🔌 หาจุดชาร์จ EV', action: post('หาจุดชาร์จ EV', 'action=menu_ev') },
-    { key: 'monthly', title: '📅 สรุปเดือนนี้', action: msg('สรุปเดือนนี้', 'สรุปยอดเดือนนี้') },
+    { key: 'restaurant', title: '🍽 ร้านอาหาร', action: post('ร้านอาหาร', 'action=menu_restaurant') },
     { key: 'help', title: '❓ วิธีใช้', action: msg('วิธีใช้', 'help') },
   ],
 };

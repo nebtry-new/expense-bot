@@ -283,7 +283,7 @@ function startNotificationScheduler() {
       if (billing.sent) console.log('BILLING_REMINDERS_SENT', billing);
       if (reminders.sent) console.log('PAYMENT_REMINDERS_SENT', reminders);
       const planner = await runPlannerReminders(sendPushMessage);
-      if (planner.events || planner.todos) console.log('PLANNER_REMINDERS_SENT', planner);
+      if (planner.events || planner.todos || planner.gifts) console.log('PLANNER_REMINDERS_SENT', planner);
       if (result.sent || result.failed) console.log('NOTIFICATIONS_RUN', result);
       else if (schedulerStatus.runs % heartbeatEvery === 0) console.log('NOTIFICATION_SCHEDULER alive', { runs: schedulerStatus.runs });
     } catch (error) {
